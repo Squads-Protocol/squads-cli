@@ -19,6 +19,7 @@
     "clear": "^0.1.0",
     "clui": "^0.3.6",
     "configstore": "^6.0.0",
+    "console.table": "^0.10.0",
     "figlet": "^1.5.2",
     "inquirer": "^9.0.0",
     "lodash": "^4.17.21",
