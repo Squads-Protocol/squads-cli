@@ -1,6 +1,6 @@
 {
-  "name": "squads-cli",
-  "version": "1.0.0",
+  "name": "@sqds/cli",
+  "version": "1.0.1",
   "description": "",
   "main": "index.js",
   "scripts": {
