@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 import Menu from "./lib/menu.js";
-import { loadCliWallet } from './lib/wallet.js';
-import { getSquads } from "./lib/api.js";
-
-const wallet = loadCliWallet();
+import CliWallet from './lib/wallet.js';
+import CliConnection from "./lib/connection.js";
+import SetupWallet from "./lib/inq/walletPath.js";
+import SetupCluster from "./lib/inq/cluster.js";
 
 const load = async () => {
-    const squads = await getSquads(wallet.publicKey);
-    new Menu(wallet, squads);
+    const {walletPath} = await SetupWallet();
+    const cliWallet = new CliWallet(walletPath);
+    const {cluster} = await SetupCluster();
+    const cliConnection = new CliConnection(cluster);
+
+    // start the menu
+    new Menu(cliWallet, cliConnection);
 };
 load();
