@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import clear from 'clear';
+import chalk from 'chalk';
+
 import Menu from "./lib/menu.js";
 import CliWallet from './lib/wallet.js';
 import CliConnection from "./lib/connection.js";
@@ -6,6 +9,8 @@ import SetupWallet from "./lib/inq/walletPath.js";
 import SetupCluster from "./lib/inq/cluster.js";
 
 const load = async () => {
+    clear();
+    console.log(chalk.yellow('Starting Squads CLI...') + " Follow the prompts to get started")
     const {walletPath} = await SetupWallet();
     const cliWallet = new CliWallet(walletPath);
     const {cluster} = await SetupCluster();

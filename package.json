@@ -1,6 +1,6 @@
 {
   "name": "@sqds/cli",
-  "version": "1.0.10",
+  "version": "1.0.12",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -36,5 +36,9 @@
   "bin": {
     "squads-cli": "./index.js"
   },
-  "type": "module"
+  "type": "module",
+  "engines" : { 
+    "npm": ">=8.19.2",
+    "node": ">=16.0.0"
+  }
 }
