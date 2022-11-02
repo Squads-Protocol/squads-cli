@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/Squads-Protocol/squads-cli/compare/v1.1.0...v1.2.0) (2022-11-02)
+
+
+### Features
+
+* **config:** flag for cluster ([624c9b0](https://github.com/Squads-Protocol/squads-cli/commit/624c9b00455aadb5c00c27d8004232ce9e046727))
+
 ## [1.1.0](https://github.com/Squads-Protocol/squads-cli/compare/v1.0.0...v1.1.0) (2022-11-02)
 
 
