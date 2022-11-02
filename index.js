@@ -21,6 +21,13 @@ const load = async () => {
     // start the menu
     new Menu(cliWallet, cliConnection);
 };
+
+const help = async () => {
+    clear();
+    console.log("Squads CLI is in alpha, more commands and options are in progress.")
+    console.log("For more information, visit https://github.com/squads-protocol/squads-cli");
+};
+
 // console.log(process.argv[2]);
 const option = process.argv[2];
 switch(option){
@@ -29,6 +36,14 @@ switch(option){
         console.log("Squads CLI version: " + pjson.version);
         break;
     
+    case "-h":
+        help();
+        break;
+    
+    case "--help":
+        help();
+        break;
+        
     default:
         clear();
         load();
