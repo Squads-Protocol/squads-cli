@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/Squads-Protocol/squads-cli/compare/v1.0.0...v1.1.0) (2022-11-02)
+
+
+### Features
+
+* **flag:** help stub added ([148b4c3](https://github.com/Squads-Protocol/squads-cli/commit/148b4c331a3e6c22b20558382c30deccae97e2c2))
+
 ## 1.0.0 (2022-11-02)
 
 
