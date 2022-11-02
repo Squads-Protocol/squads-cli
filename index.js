@@ -10,13 +10,18 @@ import SetupCluster from "./lib/inq/cluster.js";
 import pjson from './package.json' assert {type: 'json'};
 
 // console.log(pjson.version);
-const load = async () => {
+const load = async (initCluster = null) => {
     clear();
     console.log(chalk.yellow('Starting Squads CLI...') + " Follow the prompts to get started")
     const {walletPath} = await SetupWallet();
     const cliWallet = new CliWallet(walletPath);
-    const {cluster} = await SetupCluster();
-    const cliConnection = new CliConnection(cluster);
+    let cliConnection;
+    if(!initCluster){
+        const {cluster} = await SetupCluster();
+        cliConnection = new CliConnection(cluster);
+    }else{
+        cliConnection = new CliConnection(initCluster);
+    }
 
     // start the menu
     new Menu(cliWallet, cliConnection);
@@ -29,6 +34,7 @@ const help = async () => {
 };
 
 // console.log(process.argv[2]);
+
 const option = process.argv[2];
 switch(option){
     case "-v":
@@ -43,7 +49,11 @@ switch(option){
     case "--help":
         help();
         break;
-        
+    
+    case "--cluster":
+        const c = (process.argv[3] && process.argv[3].length > 0) ? process.argv[3] : null;
+        load(c);
+        break;
     default:
         clear();
         load();
