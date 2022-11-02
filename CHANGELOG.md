@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/Squads-Protocol/squads-cli/compare/v1.2.0...v1.2.1) (2022-11-02)
+
+
+### Bug Fixes
+
+* **txix:** transactioninstruction ([9306866](https://github.com/Squads-Protocol/squads-cli/commit/93068668a08ed572db068e6a3d2537b5e9a079a2))
+
 ## [1.2.0](https://github.com/Squads-Protocol/squads-cli/compare/v1.1.0...v1.2.0) (2022-11-02)
 
 
