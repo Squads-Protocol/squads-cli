@@ -7,7 +7,9 @@ import CliWallet from './lib/wallet.js';
 import CliConnection from "./lib/connection.js";
 import SetupWallet from "./lib/inq/walletPath.js";
 import SetupCluster from "./lib/inq/cluster.js";
+import pjson from './package.json' assert {type: 'json'};
 
+// console.log(pjson.version);
 const load = async () => {
     clear();
     console.log(chalk.yellow('Starting Squads CLI...') + " Follow the prompts to get started")
@@ -19,4 +21,16 @@ const load = async () => {
     // start the menu
     new Menu(cliWallet, cliConnection);
 };
-load();
+// console.log(process.argv[2]);
+const option = process.argv[2];
+switch(option){
+    case "-v":
+        clear();
+        console.log("Squads CLI version: " + pjson.version);
+        break;
+    
+    default:
+        clear();
+        load();
+        break;
+}
