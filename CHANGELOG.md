@@ -2,7 +2,6 @@
 
 ## [1.2.3](https://github.com/Squads-Protocol/squads-cli/compare/v1.2.2...v1.2.3) (2022-12-13)
 
-
 ### Bug Fixes
 
 * **bin:** set new bin path ([48ef607](https://github.com/Squads-Protocol/squads-cli/commit/48ef60788019b54c6f5643a191c99067f392e754))
