@@ -51,7 +51,7 @@
     "yargs": "^17.6.2"
   },
   "bin": {
-    "squads-cli": "./dist/index.js"
+    "squads-cli": "./src/index.js"
   },
   "type": "module",
   "engines": {
