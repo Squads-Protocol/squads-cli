@@ -1,6 +1,10 @@
 {
   "name": "@sqds/cli",
+<<<<<<< HEAD
   "version": "1.2.3",
+=======
+  "version": "1.2.2",
+>>>>>>> a27db6f (chore(main): release 1.2.2)
   "description": "",
   "main": "index.js",
   "scripts": {
