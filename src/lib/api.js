@@ -5,7 +5,7 @@ import BN from "bn.js";
 import { getProgramData, upgradeSetAuthorityIx } from "./program.js";
 import { getAssets } from "./assets.js";
 import { getOrCreateAssociatedTokenAccount, createAssociatedTokenAccountInstruction, getAssociatedTokenAddress} from "@solana/spl-token";
-import idl from "../../squads_mpl.json" assert {type: "json"};
+import {idl} from "../info.cjs";
 
 const Squads = SquadsSdk.default;
 const getTxPDA = SquadsSdk.getTxPDA;

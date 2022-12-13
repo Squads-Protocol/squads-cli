@@ -7,7 +7,7 @@ import CliWallet from './lib/wallet.js';
 import CliConnection from "./lib/connection.js";
 import SetupWallet from "./lib/inq/walletPath.js";
 import SetupCluster from "./lib/inq/cluster.js";
-import pjson from '../package.json' assert {type: 'json'};
+import pjson from "./info.cjs";
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers'
 

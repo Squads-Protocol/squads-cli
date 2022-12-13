@@ -4,7 +4,6 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "esbuild ./src/index.js --bundle --outfile=./build/index.js --platform=node --external:./node_modules/*",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": {
@@ -40,9 +39,8 @@
     "clui": "^0.3.6",
     "configstore": "^6.0.0",
     "console.table": "^0.10.0",
-    "esbuild": "^0.15.16",
     "figlet": "^1.5.2",
-    "inquirer": "^9.0.0",
+    "inquirer": "^9.1.4",
     "inquirer-press-to-continue": "^1.1.4",
     "lodash": "^4.17.21",
     "minimist": "^1.2.6",
