@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.2.2](https://github.com/Squads-Protocol/squads-cli/compare/v1.2.1...v1.2.2) (2022-12-13)
+
+
+### Bug Fixes
+
+* **address:** updated address and sdk ([ef66764](https://github.com/Squads-Protocol/squads-cli/commit/ef667643b6df6e0018c1ffa718bb45b02af14a09))
+* **cleanup:** remove old lib/ ([fe54b81](https://github.com/Squads-Protocol/squads-cli/commit/fe54b81c42c9575b8118517d0966477e132bdda6))
+* **config:** update to config program id and program manager id ([1a25fd8](https://github.com/Squads-Protocol/squads-cli/commit/1a25fd87efd9c952e820fad01551188227deddcb))
+* **logs:** removed from setup ([0cc8e31](https://github.com/Squads-Protocol/squads-cli/commit/0cc8e3156288189c077cca8b0d4144aa4705c990))
+
 ## [1.2.1](https://github.com/Squads-Protocol/squads-cli/compare/v1.2.0...v1.2.1) (2022-11-02)
 
 
