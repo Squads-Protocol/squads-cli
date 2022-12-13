@@ -3,10 +3,15 @@
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> a8baf27 (chore(main): release 1.2.3)
 =======
 >>>>>>> ad79444 (chore(main): release 1.2.2)
+=======
+=======
+>>>>>>> 7d454b3 (chore(main): release 1.2.3)
+>>>>>>> b463965 (chore(main): release 1.2.3)
 ## [1.2.3](https://github.com/Squads-Protocol/squads-cli/compare/v1.2.2...v1.2.3) (2022-12-13)
 
 
@@ -17,6 +22,7 @@
 
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> a27db6f (chore(main): release 1.2.2)
 =======
@@ -25,6 +31,12 @@
 =======
 >>>>>>> 92052fb (chore(main): release 1.2.2)
 >>>>>>> ad79444 (chore(main): release 1.2.2)
+=======
+=======
+>>>>>>> 92052fb (chore(main): release 1.2.2)
+=======
+>>>>>>> 7d454b3 (chore(main): release 1.2.3)
+>>>>>>> b463965 (chore(main): release 1.2.3)
 ## [1.2.2](https://github.com/Squads-Protocol/squads-cli/compare/v1.2.1...v1.2.2) (2022-12-13)
 
 
