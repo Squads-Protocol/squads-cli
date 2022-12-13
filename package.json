@@ -21,7 +21,7 @@
     "type": "git",
     "url": "https://github.com/squads-protocol/squads-cli"
   },
-  "license": "ISC",
+  "license": "AGPL-3.0-or-later",
   "dependencies": {
     "@metaplex/js": "^4.12.0",
     "@octokit/auth-basic": "^1.4.8",
