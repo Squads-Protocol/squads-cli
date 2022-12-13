@@ -1,42 +1,12 @@
 # Changelog
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> a8baf27 (chore(main): release 1.2.3)
-=======
->>>>>>> ad79444 (chore(main): release 1.2.2)
-=======
-=======
->>>>>>> 7d454b3 (chore(main): release 1.2.3)
->>>>>>> b463965 (chore(main): release 1.2.3)
 ## [1.2.3](https://github.com/Squads-Protocol/squads-cli/compare/v1.2.2...v1.2.3) (2022-12-13)
-
 
 ### Bug Fixes
 
 * **bin:** set new bin path ([48ef607](https://github.com/Squads-Protocol/squads-cli/commit/48ef60788019b54c6f5643a191c99067f392e754))
 * **idl:** added new idl w/meta ([040875f](https://github.com/Squads-Protocol/squads-cli/commit/040875f70282297c99bbdda8eec0f1f7e0628351))
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> a27db6f (chore(main): release 1.2.2)
-=======
->>>>>>> a8baf27 (chore(main): release 1.2.3)
-=======
-=======
->>>>>>> 92052fb (chore(main): release 1.2.2)
->>>>>>> ad79444 (chore(main): release 1.2.2)
-=======
-=======
->>>>>>> 92052fb (chore(main): release 1.2.2)
-=======
->>>>>>> 7d454b3 (chore(main): release 1.2.3)
->>>>>>> b463965 (chore(main): release 1.2.3)
 ## [1.2.2](https://github.com/Squads-Protocol/squads-cli/compare/v1.2.1...v1.2.2) (2022-12-13)
 
 
