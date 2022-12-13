@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.4](https://github.com/Squads-Protocol/squads-cli/compare/v1.2.3...v1.2.4) (2022-12-13)
+
+
+### Bug Fixes
+
+* **info:** added info for idl and package.json loading ([de0e508](https://github.com/Squads-Protocol/squads-cli/commit/de0e5085a5ae35e9c845d0655939a1815932782b))
+* **merge:** conflict resolved ([32267fe](https://github.com/Squads-Protocol/squads-cli/commit/32267fe791587d556ccd4af95c6e366ebc0dfbd4))
+
 ## [1.2.3](https://github.com/Squads-Protocol/squads-cli/compare/v1.2.2...v1.2.3) (2022-12-13)
 
 ### Bug Fixes
