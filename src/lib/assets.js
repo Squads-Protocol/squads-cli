@@ -14,8 +14,7 @@ export const getAssets = async (connection, userKey) => {
         programId: TOKEN_PROGRAM_ID,
     });
 
-    const solInfo = await connection.getBalance(userKey);
-
+    const solInfo = await connection.getBalance(userKey, "confirmed");
     const solModel = {
         amount: solInfo / LAMPORTS_PER_SOL,
         source: userKey.toBase58(),
@@ -81,10 +80,16 @@ export const getAssets = async (connection, userKey) => {
     }
     // console.log(usableTokens)
     let displayTokens = usableTokens.map(a => {
-        let out = a;
-        out.source =  (a.source && a.source.length > 0) ? shortenTextEnd(a.source, 16) : a.source;
-        out.mint =  (a.mint && a.mint.length > 0) ? shortenTextEnd(a.mint, 16) : a.mint;
-        return out;
+        // let out = a;
+        // out.account = a.source;
+        // out.mint =  (a.mint && a.mint.length > 0) ? shortenTextEnd(a.mint, 16) : a.mint;
+        return {
+            "Amount": a.amount,
+            "Account": a.source,
+            "Mint": a.mint,
+            "Symbol": a.symbol,
+            "Name": a.name,
+        };
     });
     return {usableTokens, displayTokens};
 }

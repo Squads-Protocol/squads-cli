@@ -21,7 +21,7 @@ const inputATAInq = async (v) => {
                     return true;
                 }
             },
-            message: 'Enter the public key for the mint (base58) for the ATA:',
+            message: 'Enter the public key for the mint (base58) for the ATA, or press Enter to go back:',
         },
         {
             default: v.toBase58(),

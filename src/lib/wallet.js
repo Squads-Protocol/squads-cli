@@ -1,6 +1,7 @@
 import os from "os";
 import fs from "fs";
 import * as anchor from "@project-serum/anchor";
+import Wallet from "@project-serum/anchor";
 import _ from "lodash";
 // const filelist = _.without(fs.readdirSync('.'), '.git', '.gitignore');
 

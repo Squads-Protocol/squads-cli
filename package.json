@@ -4,9 +4,24 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "build": "esbuild ./src/index.js --bundle --outfile=./build/index.js --platform=node --external:./node_modules/*",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "",
+  "author": {
+    "name": "Sean Ganser",
+    "email": "sean.ganser@gmail.com",
+    "url": "https://github.com/ogmedia"
+  },
+  "keywords": [
+    "solana",
+    "multisig",
+    "cli",
+    "smart contract"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/squads-protocol/squads-cli"
+  },
   "license": "ISC",
   "dependencies": {
     "@metaplex/js": "^4.12.0",
@@ -16,7 +31,7 @@
     "@solana/spl-token": "^0.3.6",
     "@solana/spl-token-registry": "^0.2.4574",
     "@solana/web3.js": "^1.63.1",
-    "@sqds/sdk": "^1.0.4",
+    "@sqds/sdk": "^1.0.6",
     "axios": "^0.27.2",
     "bn.js": "^5.2.1",
     "bs58": "^5.0.0",
@@ -25,16 +40,18 @@
     "clui": "^0.3.6",
     "configstore": "^6.0.0",
     "console.table": "^0.10.0",
+    "esbuild": "^0.15.16",
     "figlet": "^1.5.2",
     "inquirer": "^9.0.0",
     "inquirer-press-to-continue": "^1.1.4",
     "lodash": "^4.17.21",
     "minimist": "^1.2.6",
     "simple-git": "^3.10.0",
-    "touch": "^3.1.0"
+    "touch": "^3.1.0",
+    "yargs": "^17.6.2"
   },
   "bin": {
-    "squads-cli": "./index.js"
+    "squads-cli": "./dist/index.js"
   },
   "type": "module",
   "engines": {

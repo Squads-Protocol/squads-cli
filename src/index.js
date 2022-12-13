@@ -7,10 +7,14 @@ import CliWallet from './lib/wallet.js';
 import CliConnection from "./lib/connection.js";
 import SetupWallet from "./lib/inq/walletPath.js";
 import SetupCluster from "./lib/inq/cluster.js";
-import pjson from './package.json' assert {type: 'json'};
+import pjson from '../package.json' assert {type: 'json'};
+import yargs from 'yargs';
+import { hideBin } from 'yargs/helpers'
+
+const argv = yargs(hideBin(process.argv)).argv
 
 // console.log(pjson.version);
-const load = async (initCluster = null) => {
+const load = async (initCluster = null, programId = null) => {
     clear();
     console.log(chalk.yellow('Starting Squads CLI...') + " Follow the prompts to get started")
     const {walletPath} = await SetupWallet();
@@ -24,7 +28,7 @@ const load = async (initCluster = null) => {
     }
 
     // start the menu
-    new Menu(cliWallet, cliConnection);
+    new Menu(cliWallet, cliConnection, programId);
 };
 
 const help = async () => {
@@ -33,29 +37,24 @@ const help = async () => {
     console.log("For more information, visit https://github.com/squads-protocol/squads-cli");
 };
 
-// console.log(process.argv[2]);
+let cluster = null;
+let programId = null;
+let programManagerId = null;
+if (argv.cluster && argv.cluster.length > 0){
+    cluster = argv.cluster;
+}
+if (argv.programId && argv.programId.length > 0){
+    programId = argv.programId;
+}
+if (argv.programManagerId && argv.programManagerId.length > 0){
+    programManagerId = argv.programManagerId;
+}
 
-const option = process.argv[2];
-switch(option){
-    case "-v":
-        clear();
-        console.log("Squads CLI version: " + pjson.version);
-        break;
-    
-    case "-h":
-        help();
-        break;
-    
-    case "--help":
-        help();
-        break;
-    
-    case "--cluster":
-        const c = (process.argv[3] && process.argv[3].length > 0) ? process.argv[3] : null;
-        load(c);
-        break;
-    default:
-        clear();
-        load();
-        break;
+if (argv.help){
+    help();
+}else if (argv.version || argv.v){
+    console.log(pjson.version);
+}else {
+    clear();
+    load(cluster, programId, programManagerId);
 }

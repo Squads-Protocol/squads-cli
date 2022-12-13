@@ -6,7 +6,7 @@ const questions = [
     {
         default: "",
         name: 'rawIx',
-        type: 'n',
+        type: 'input',
         message: 'Enter the serialized Transaction in base58:',
     }];
     return inquirer.prompt(questions);

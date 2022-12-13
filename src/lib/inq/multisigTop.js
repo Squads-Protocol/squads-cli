@@ -5,7 +5,7 @@ export default (multisig) => {
         {
             type: 'list',
             name: 'action',
-            message: `Multisig: ${multisig.publicKey.toBase58()}`,
+            message: `What would you like to do?`,
             choices: [
                 "Transactions",
                 "Create new Transaction",
