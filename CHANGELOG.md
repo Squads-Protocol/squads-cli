@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.5](https://github.com/Squads-Protocol/squads-cli/compare/v1.2.4...v1.2.5) (2022-12-13)
+
+
+### Bug Fixes
+
+* **lock:** removed package-lock.json ([60badce](https://github.com/Squads-Protocol/squads-cli/commit/60badce32916c3d57b41368f5f94afbd077df4e0))
+
 ## [1.2.4](https://github.com/Squads-Protocol/squads-cli/compare/v1.2.3...v1.2.4) (2022-12-13)
 
 
