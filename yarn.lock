@@ -389,10 +389,10 @@
     rpc-websockets "^7.5.0"
     superstruct "^0.14.2"
 
-"@sqds/sdk@^1.0.4":
-  version "1.0.4"
-  resolved "https://registry.npmjs.org/@sqds/sdk/-/sdk-1.0.4.tgz"
-  integrity sha512-/McXSU0zgdTBnH7SaOo1zUrTc5V4JFTGzUqvA77V17E8kTWdMkl/B3vI4CRoC/fPF1leFc/CYXmEPVWyzoN0HQ==
+"@sqds/sdk@^1.0.6":
+  version "1.0.6"
+  resolved "https://registry.yarnpkg.com/@sqds/sdk/-/sdk-1.0.6.tgz#038f8fb398b9f442b20d00a2248abbd0da71e743"
+  integrity sha512-ZkIfP+SsbciYS3cXxBvOPoUC8AgfMEcky0SOuVRdjtcrSf/JgUqIyGblKllhjsqDXLlc+4i1tj/MiJEvQfvSVQ==
   dependencies:
     "@project-serum/anchor" "^0.25.0"
     "@solana/web3.js" "^1.53.0"
