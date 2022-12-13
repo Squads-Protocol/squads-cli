@@ -37,8 +37,6 @@ const help = async () => {
     console.log("For more information, visit https://github.com/squads-protocol/squads-cli");
 };
 
-console.log(argv);
-
 let cluster = null;
 let programId = null;
 let programManagerId = null;
