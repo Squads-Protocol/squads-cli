@@ -2,9 +2,13 @@ import chalk from 'chalk';
 import clear from 'clear';
 import figlet from 'figlet';
 import inquirer from 'inquirer';
-import * as anchor from "@project-serum/anchor";
+import * as anchor from "@coral-xyz/anchor";
 import CLI from "clui";
 import "console.table";
+
+import { getAuthorityPDA, DEFAULT_MULTISIG_PROGRAM_ID, DEFAULT_PROGRAM_MANAGER_PROGRAM_ID } from '@sqds/sdk';
+import BN from 'bn.js';
+import { PublicKey } from '@solana/web3.js';
 import {
     mainMenu,
     viewMultisigsMenu,
@@ -28,18 +32,17 @@ import {
 
 import API from "./api.js";
 
-import { getAuthorityPDA, DEFAULT_MULTISIG_PROGRAM_ID, DEFAULT_PROGRAM_MANAGER_PROGRAM_ID } from '@sqds/sdk';
-import { BN } from 'bn.js';
-import { PublicKey } from '@solana/web3.js';
 import { shortenTextEnd } from './utils.js';
 
 const Spinner = CLI.Spinner;
 class Menu{
+    programId;
+    programManagerId;
     multisigs = [];
     wallet;
     api;
     connection;
-    constructor(wallet, connection, programId, programManagerId) {
+    constructor(wallet, connection, programId: string, programManagerId?: string) {
         this.wallet = wallet.wallet;
         this.connection = connection;
         this.programId = programId ? new PublicKey(programId) : DEFAULT_MULTISIG_PROGRAM_ID;
@@ -324,7 +327,7 @@ class Menu{
             }
         }else if(action === "Add Instruction"){
             const ix = await addInstructionInq();
-            if (ix.programId){
+            if (ix && ix.programId){
                 clear();
                 this.header();
                 console.log("ProgramId: " + chalk.blue(ix.programId.toBase58()));
@@ -547,7 +550,7 @@ class Menu{
             const status = new Spinner('Fetching program data...');
             status.start();
             try {
-                const programAuthority = await getProgramDataAuthority(new anchor.web3.PublicKey(programId));
+                const programAuthority = await this.api.getProgramDataAuthority(new anchor.web3.PublicKey(programId));
                 chalk.blue("Current program data authority: " + programAuthority);
                 status.stop();
                 if (programAuthority !== this.wallet.publicKey.toBase58()) {

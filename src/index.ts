@@ -7,14 +7,19 @@ import CliWallet from './lib/wallet.js';
 import CliConnection from "./lib/connection.js";
 import SetupWallet from "./lib/inq/walletPath.js";
 import SetupCluster from "./lib/inq/cluster.js";
-import pjson from "./info.cjs";
 import yargs from 'yargs';
-import { hideBin } from 'yargs/helpers'
+import {hideBin} from 'yargs/helpers'
 
-const argv = yargs(hideBin(process.argv)).argv
+const VERSION = "1.3.0";
+
+const argv = yargs(hideBin(process.argv)).options({
+    cluster: { type: 'string'},
+    programId: { type: 'string'},
+    programManagerId: { type: 'string'},
+  }).parseSync();
 
 // console.log(pjson.version);
-const load = async (initCluster = null, programId = null) => {
+const load = async (initCluster = null, programId = null, programManagerId = null) => {
     clear();
     console.log(chalk.yellow('Starting Squads CLI...') + " Follow the prompts to get started")
     const {walletPath} = await SetupWallet();
@@ -28,7 +33,7 @@ const load = async (initCluster = null, programId = null) => {
     }
 
     // start the menu
-    new Menu(cliWallet, cliConnection, programId);
+    new Menu(cliWallet, cliConnection, programId, programManagerId);
 };
 
 const help = async () => {
@@ -53,7 +58,7 @@ if (argv.programManagerId && argv.programManagerId.length > 0){
 if (argv.help){
     help();
 }else if (argv.version || argv.v){
-    console.log(pjson.version);
+    console.log(VERSION);
 }else {
     clear();
     load(cluster, programId, programManagerId);

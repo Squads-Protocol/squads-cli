@@ -1,4 +1,4 @@
-import * as anchor from "@project-serum/anchor";
+import * as anchor from "@coral-xyz/anchor";
 import BN from "bn.js";
 const BPFLOADER_ADDRESS = new anchor.web3.PublicKey("BPFLoaderUpgradeab1e11111111111111111111111");
 

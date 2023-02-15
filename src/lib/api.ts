@@ -1,14 +1,13 @@
 import axios from "axios";
-import SquadsSdk, { getAuthorityPDA } from "@sqds/sdk";
-import * as anchor from "@project-serum/anchor";
+import Squads, { getTxPDA, getAuthorityPDA } from "@sqds/sdk";
+import * as anchor from "@coral-xyz/anchor";
 import BN from "bn.js";
 import { getProgramData, upgradeSetAuthorityIx } from "./program.js";
 import { getAssets } from "./assets.js";
-import { getOrCreateAssociatedTokenAccount, createAssociatedTokenAccountInstruction, getAssociatedTokenAddress} from "@solana/spl-token";
-import {idl} from "../info.cjs";
-
-const Squads = SquadsSdk.default;
-const getTxPDA = SquadsSdk.getTxPDA;
+import {Token} from "@solana/spl-token";
+import {idl} from "../info";
+import { ASSOCIATED_TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 
 class API{
     squads;
@@ -18,6 +17,7 @@ class API{
     programId;
     program;
     provider;
+    programManagerId;
     constructor(wallet, connection, programId = null, programManagerId = null){
         this.programId = programId;
         this.programManagerId = programManagerId;
@@ -26,7 +26,7 @@ class API{
         this.cluster = connection.cluster;
         this.connection = connection.connection;
         this.provider = new anchor.AnchorProvider(this.connection, this.wallet, {preflightCommitment: "confirmed", commitment: "confirmed"});
-        this.program = new anchor.Program(idl, this.programId, this.provider);
+        this.program = new anchor.Program(idl as anchor.Idl, this.programId, this.provider);
     }
 
     getSquadExtended = async (ms) => {
@@ -52,7 +52,8 @@ class API{
     getTransactions = async (ms) => {
         const txIndex = ms.transactionIndex;
         const transactions = await Promise.all([...new Array(txIndex)].map(async (_, i) => {
-            const [txPDA] = await getTxPDA(ms.publicKey, new BN(i+1), this.programId);
+            const ind = new BN(i+1);
+            const [txPDA] = await getTxPDA(ms.publicKey, ind, this.programId);
             return this.squads.getTransaction(txPDA);
         }));
         return transactions;
@@ -109,7 +110,7 @@ class API{
         tx.add(activateIx);
         tx.add(approveIx);
         console.log("Transaction composed")
-        tx = await wallet.signTransaction(tx);
+        tx = await this.wallet.signTransaction(tx);
         console.log("Transaction signed")
         console.log("Sending");
         const sig = await this.connection.sendRawTransaction(tx.serialize(), {skipPreflight: true});
@@ -220,12 +221,14 @@ class API{
     }
 
     async createATA(mint, owner){
-        const ataPubkey = await getAssociatedTokenAddress(mint,owner,true)
-        const createATAIx = await createAssociatedTokenAccountInstruction(
-            this.wallet.publicKey,
+        const ataPubkey = await Token.getAssociatedTokenAddress(ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID,mint,owner,true)
+        const createATAIx = await Token.createAssociatedTokenAccountInstruction(
+            ASSOCIATED_TOKEN_PROGRAM_ID,
+            TOKEN_PROGRAM_ID,
+            mint,
             ataPubkey,
             owner,
-            mint
+            this.wallet.publicKey,
         );
 
         const {blockhash, lastValidBlockHeight} = await this.connection.getLatestBlockhash();

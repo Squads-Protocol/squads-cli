@@ -8,7 +8,7 @@ export function shortenTextEnd(text, chars) {
 export async function getMultipleAccountsBatch(
     connection,
     publicKeys,
-    commitment
+    commitment = "processed"
 ){
     const keys = []
     let tempKeys = []

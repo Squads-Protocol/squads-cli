@@ -1,0 +1,1 @@
+{"version":3,"file":"settings.js","sourceRoot":"","sources":["../../../src/lib/inq/settings.js"],"names":[],"mappings":";;;AAAA,8DAAgC;AAEhC,mBAAgB;IACZ,IAAM,SAAS,GAAG;QACd;YACI,IAAI,EAAE,MAAM;YACZ,IAAI,EAAE,QAAQ;YACd,OAAO,EAAE,4BAA4B;YACrC,OAAO,EAAE;gBACL,WAAW;gBACX,cAAc;gBACd,kBAAkB;gBAClB,YAAY;aACf;SACJ;KACJ,CAAC;IACF,OAAO,kBAAQ,CAAC,MAAM,CAAC,SAAS,CAAC,CAAC;AACtC,CAAC,EAAC"}

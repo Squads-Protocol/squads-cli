@@ -54,6 +54,7 @@ export const getNFTAccounts = async (connection, publicKey) => {
                             return {
                                 account: filtered[i].account,
                                 metadata: md,
+                                jsonData: null,
                                 tokenModel: {
                                     amount: filtered[i].amount,
                                     source: filtered[i].account.toBase58(),
@@ -125,6 +126,7 @@ export const getOldNFTAccounts = async (connection, publicKey) => {
                             return {
                                 account: filtered[i].account,
                                 metadata: md,
+                                jsonData: null,
                                 tokenModel: {
                                     amount: filtered[i].amount,
                                     source: filtered[i].account.toBase58(),
