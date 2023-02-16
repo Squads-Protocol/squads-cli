@@ -410,10 +410,10 @@
     rpc-websockets "^7.5.0"
     superstruct "^0.14.2"
 
-"@sqds/sdk@^2.0.1":
-  version "2.0.1"
-  resolved "https://registry.yarnpkg.com/@sqds/sdk/-/sdk-2.0.1.tgz#68c216b901355acd7334df32e174649e4c960b31"
-  integrity sha512-nJmGVVeajk5yZn7wT1VB/LLRiM1e5O2u6CZig8wRcVRzv6BdfflRT5DnEeoStvwIzrxP+uA0BRoj87m8gSCMdg==
+"@sqds/sdk@^2.0.2":
+  version "2.0.2"
+  resolved "https://registry.yarnpkg.com/@sqds/sdk/-/sdk-2.0.2.tgz#326a2cbe35ec0b5cda7f1cf295b1bb93a3e199ae"
+  integrity sha512-37aV2QP2CaIFfFD2YPi5EHM5ByCgMYsUl4xBqeYLN6lGz6HGpH2gJo+nRWf0wg7f4lUlW0o/TV0YvWyX2ghKzg==
   dependencies:
     "@coral-xyz/anchor" "^0.26.0"
     "@solana/web3.js" "^1.73.2"
@@ -465,12 +465,34 @@
   resolved "https://registry.yarnpkg.com/@types/btoa-lite/-/btoa-lite-1.0.0.tgz#e190a5a548e0b348adb0df9ac7fa5f1151c7cca4"
   integrity sha512-wJsiX1tosQ+J5+bY5LrSahHxr2wT+uME5UDwdN1kg4frt40euqA+wzECkmq4t5QbveHiJepfdThgQrPw6KiSlg==
 
+"@types/clear@^0.1.2":
+  version "0.1.2"
+  resolved "https://registry.yarnpkg.com/@types/clear/-/clear-0.1.2.tgz#131050f8a7b429ae0e4ca390339ea9977ca977bd"
+  integrity sha512-h3GHp9BuPgY3X+WKWwJgTIl/h38KkcdU6JG28i1xdrlS8YXVi3V1YrhaZkjuvur97qZo8TMQjVXJorTf87LvfA==
+
+"@types/cli-color@*":
+  version "2.0.2"
+  resolved "https://registry.yarnpkg.com/@types/cli-color/-/cli-color-2.0.2.tgz#01bd593722a12c26ec84c170ab251fe2d35856c5"
+  integrity sha512-1ErQIcmNHtNViGKTtB/TIKqMkC2RkKI2nBneCr9hSCPo9H05g9VzjlaXPW3H0vaI8zFGjJZvSav+VKDKCtKgKA==
+
+"@types/clui@^0.3.1":
+  version "0.3.1"
+  resolved "https://registry.yarnpkg.com/@types/clui/-/clui-0.3.1.tgz#ccd8208ef11e04afd662115b1500337c527a3642"
+  integrity sha512-MxV6JIniaXPM+TNiqQ7vKi6Ad8sb0hyiaJmyjjzWv1ywinR7ZqEFdE7uP7IMmwXC2Huv3Axj1dZKDNYNl1I15g==
+  dependencies:
+    "@types/cli-color" "*"
+
 "@types/connect@^3.4.33":
   version "3.4.35"
   resolved "https://registry.yarnpkg.com/@types/connect/-/connect-3.4.35.tgz#5fcf6ae445e4021d1fc2219a4873cc73a3bb2ad1"
   integrity sha512-cdeYyv4KWoEgpBISTxWvqYsVy444DOqehiF3fM3ne10AmJ62RSyNkUnxMJXHQWRQQX2eR94m5y1IZyDwBjV9FQ==
   dependencies:
     "@types/node" "*"
+
+"@types/figlet@^1.5.5":
+  version "1.5.5"
+  resolved "https://registry.yarnpkg.com/@types/figlet/-/figlet-1.5.5.tgz#da93169178f0187da288c313ab98ab02fb1e8b8c"
+  integrity sha512-0sMBeFoqdGgdXoR/hgKYSWMpFufSpToosNsI2VgmkPqZJgeEXsXNu2hGr0FN401dBro2tNO5y2D6uw3UxVaxbg==
 
 "@types/inquirer@^9.0.3":
   version "9.0.3"

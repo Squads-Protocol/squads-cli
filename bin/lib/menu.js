@@ -19,26 +19,24 @@ var Menu = /** @class */ (function () {
     function Menu(wallet, connection, programId, programManagerId) {
         var _this = this;
         this.multisigs = [];
-        this.header = function (vault) {
-            if (vault === void 0) { vault = null; }
-            return tslib_1.__awaiter(_this, void 0, void 0, function () {
-                return tslib_1.__generator(this, function (_a) {
-                    (0, clear_1.default)();
-                    console.log(chalk_1.default.yellow(figlet_1.default.textSync('SQUADS', { font: "Slant", horizontalLayout: 'full' })));
-                    console.log(chalk_1.default.blue("Connected wallet: ") + chalk_1.default.white(this.wallet.publicKey.toBase58()));
-                    if (vault) {
-                        try {
-                            console.log(chalk_1.default.blue("Vault address: ") + chalk_1.default.white(vault.toBase58()));
-                        }
-                        catch (e) {
-                            // bad vault obj
-                        }
+        this.header = function (vault) { return tslib_1.__awaiter(_this, void 0, void 0, function () {
+            return tslib_1.__generator(this, function (_a) {
+                (0, clear_1.default)();
+                console.log("ProgramId: ".concat(this.programId.toBase58()));
+                console.log(chalk_1.default.yellow(figlet_1.default.textSync('SQUADS', { font: "Slant", horizontalLayout: 'full' })));
+                console.log(chalk_1.default.blue("Connected wallet: ") + chalk_1.default.white(this.wallet.publicKey.toBase58()));
+                if (vault) {
+                    try {
+                        console.log(chalk_1.default.blue("Vault address: ") + chalk_1.default.white(vault.toBase58()));
                     }
-                    console.log("");
-                    return [2 /*return*/];
-                });
+                    catch (e) {
+                        // bad vault obj
+                    }
+                }
+                console.log("");
+                return [2 /*return*/];
             });
-        };
+        }); };
         this.multisigList = function () { return tslib_1.__awaiter(_this, void 0, void 0, function () {
             var loadAuthorities, spinner, _a, testList, dIndex, action, chosenMultisig, error_1;
             var _this = this;
@@ -422,7 +420,7 @@ var Menu = /** @class */ (function () {
                     case 20:
                         e_3 = _a.sent();
                         status_6.stop();
-                        console.log(e_3.message);
+                        console.log(JSON.stringify(e_3));
                         return [4 /*yield*/, (0, index_js_1.continueInq)()];
                     case 21:
                         _a.sent();
@@ -463,7 +461,7 @@ var Menu = /** @class */ (function () {
                         return [4 /*yield*/, this.api.addInstruction(tx.publicKey, ix)];
                     case 29:
                         _a.sent();
-                        return [4 /*yield*/, this.api.getTransaction(tx.publicKey)];
+                        return [4 /*yield*/, this.api.squads.getTransaction(tx.publicKey)];
                     case 30:
                         newTx = _a.sent();
                         status_7.stop();

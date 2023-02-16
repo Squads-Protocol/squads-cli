@@ -19,7 +19,7 @@ const argv = yargs(hideBin(process.argv)).options({
   }).parseSync();
 
 // console.log(pjson.version);
-const load = async (initCluster = null, programId = null, programManagerId = null) => {
+const load = async (initCluster?: string, programId?: string, programManagerId?: string) => {
     clear();
     console.log(chalk.yellow('Starting Squads CLI...') + " Follow the prompts to get started")
     const {walletPath} = await SetupWallet();
@@ -42,9 +42,9 @@ const help = async () => {
     console.log("For more information, visit https://github.com/squads-protocol/squads-cli");
 };
 
-let cluster = null;
-let programId = null;
-let programManagerId = null;
+let cluster;
+let programId;
+let programManagerId;
 if (argv.cluster && argv.cluster.length > 0){
     cluster = argv.cluster;
 }

@@ -18,38 +18,33 @@ var argv = (0, yargs_1.default)((0, helpers_1.hideBin)(process.argv)).options({
     programManagerId: { type: 'string' },
 }).parseSync();
 // console.log(pjson.version);
-var load = function (initCluster, programId, programManagerId) {
-    if (initCluster === void 0) { initCluster = null; }
-    if (programId === void 0) { programId = null; }
-    if (programManagerId === void 0) { programManagerId = null; }
-    return tslib_1.__awaiter(void 0, void 0, void 0, function () {
-        var walletPath, cliWallet, cliConnection, cluster_1;
-        return tslib_1.__generator(this, function (_a) {
-            switch (_a.label) {
-                case 0:
-                    (0, clear_1.default)();
-                    console.log(chalk_1.default.yellow('Starting Squads CLI...') + " Follow the prompts to get started");
-                    return [4 /*yield*/, (0, walletPath_js_1.default)()];
-                case 1:
-                    walletPath = (_a.sent()).walletPath;
-                    cliWallet = new wallet_js_1.default(walletPath);
-                    if (!!initCluster) return [3 /*break*/, 3];
-                    return [4 /*yield*/, (0, cluster_js_1.default)()];
-                case 2:
-                    cluster_1 = (_a.sent()).cluster;
-                    cliConnection = new connection_js_1.default(cluster_1);
-                    return [3 /*break*/, 4];
-                case 3:
-                    cliConnection = new connection_js_1.default(initCluster);
-                    _a.label = 4;
-                case 4:
-                    // start the menu
-                    new menu_js_1.default(cliWallet, cliConnection, programId, programManagerId);
-                    return [2 /*return*/];
-            }
-        });
+var load = function (initCluster, programId, programManagerId) { return tslib_1.__awaiter(void 0, void 0, void 0, function () {
+    var walletPath, cliWallet, cliConnection, cluster_1;
+    return tslib_1.__generator(this, function (_a) {
+        switch (_a.label) {
+            case 0:
+                (0, clear_1.default)();
+                console.log(chalk_1.default.yellow('Starting Squads CLI...') + " Follow the prompts to get started");
+                return [4 /*yield*/, (0, walletPath_js_1.default)()];
+            case 1:
+                walletPath = (_a.sent()).walletPath;
+                cliWallet = new wallet_js_1.default(walletPath);
+                if (!!initCluster) return [3 /*break*/, 3];
+                return [4 /*yield*/, (0, cluster_js_1.default)()];
+            case 2:
+                cluster_1 = (_a.sent()).cluster;
+                cliConnection = new connection_js_1.default(cluster_1);
+                return [3 /*break*/, 4];
+            case 3:
+                cliConnection = new connection_js_1.default(initCluster);
+                _a.label = 4;
+            case 4:
+                // start the menu
+                new menu_js_1.default(cliWallet, cliConnection, programId, programManagerId);
+                return [2 /*return*/];
+        }
     });
-};
+}); };
 var help = function () { return tslib_1.__awaiter(void 0, void 0, void 0, function () {
     return tslib_1.__generator(this, function (_a) {
         (0, clear_1.default)();
@@ -58,9 +53,9 @@ var help = function () { return tslib_1.__awaiter(void 0, void 0, void 0, functi
         return [2 /*return*/];
     });
 }); };
-var cluster = null;
-var programId = null;
-var programManagerId = null;
+var cluster;
+var programId;
+var programManagerId;
 if (argv.cluster && argv.cluster.length > 0) {
     cluster = argv.cluster;
 }

@@ -9,11 +9,11 @@ var homedir = os_1.default.homedir();
 var defaultWalletPath = "".concat(homedir, "/.config/solana/id.json");
 var CliWallet = /** @class */ (function () {
     function CliWallet(walletInitPath) {
-        if (walletInitPath === void 0) { walletInitPath = ""; }
-        if (!walletInitPath || walletInitPath.length < 1) {
-            this.walletPath = defaultWalletPath;
+        this.walletPath = defaultWalletPath;
+        if (walletInitPath && walletInitPath.length > 0) {
+            this.walletPath = walletInitPath;
         }
-        this.loadCliWallet();
+        this.wallet = this.loadCliWallet();
     }
     CliWallet.prototype.loadCliWallet = function () {
         var walletJSON;
@@ -23,10 +23,11 @@ var CliWallet = /** @class */ (function () {
         catch (e) {
             console.log("Failed to read ", this.walletPath);
             console.log("Error reading wallet file: ", e);
-            throw new Error(e);
+            throw e;
         }
         var walletKeypair = anchor.web3.Keypair.fromSecretKey(Uint8Array.from(walletJSON));
         this.wallet = new anchor.Wallet(walletKeypair);
+        return this.wallet;
     };
     return CliWallet;
 }());

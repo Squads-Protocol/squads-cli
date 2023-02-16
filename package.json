@@ -1,6 +1,6 @@
 {
   "name": "@sqds/cli",
-  "version": "2.0.1",
+  "version": "2.0.0",
   "description": "",
   "main": "dist/index.js",
   "scripts": {
@@ -30,8 +30,11 @@
     "@solana/spl-token": "^0.3.7",
     "@solana/spl-token-registry": "^0.2.4574",
     "@solana/web3.js": "^1.63.1",
-    "@sqds/sdk": "^2.0.1",
+    "@sqds/sdk": "^2.0.2",
     "@types/bn.js": "^5.1.1",
+    "@types/clear": "^0.1.2",
+    "@types/clui": "^0.3.1",
+    "@types/figlet": "^1.5.5",
     "axios": "^0.27.2",
     "bn.js": "^5.2.1",
     "bs58": "^5.0.0",

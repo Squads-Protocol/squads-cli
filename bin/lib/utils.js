@@ -51,6 +51,7 @@ function getMultipleAccountsBatch(connection, publicKeys, commitment) {
                         .sort(function (a, b) { return parseInt(a, 10) - parseInt(b, 10); })
                         .forEach(function (itemIndex) {
                         var res = resArray[parseInt(itemIndex, 10)];
+                        // eslint-disable-next-line no-restricted-syntax
                         for (var _i = 0, res_1 = res; _i < res_1.length; _i++) {
                             var account = res_1[_i];
                             accounts.push(account);

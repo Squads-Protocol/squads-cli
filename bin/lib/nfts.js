@@ -80,7 +80,7 @@ var getNFTAccounts = function (connection, publicKey) { return tslib_1.__awaiter
                                     return {
                                         account: filtered[i].account,
                                         metadata: md,
-                                        jsonData: null,
+                                        jsonData: {},
                                         tokenModel: {
                                             amount: filtered[i].amount,
                                             source: filtered[i].account.toBase58(),
@@ -171,6 +171,9 @@ var getOldNFTAccounts = function (connection, publicKey) { return tslib_1.__awai
                         return (0, utils_js_1.getMultipleAccountsBatch)(connection, filtered.map(function (f) { return f.metadataPda; }))
                             .then(function (pdaRes) {
                             return pdaRes.map(function (mpr, i) {
+                                if (!mpr) {
+                                    return null;
+                                }
                                 // try to create the Metadata object
                                 var md = null;
                                 try {
@@ -184,7 +187,7 @@ var getOldNFTAccounts = function (connection, publicKey) { return tslib_1.__awai
                                     return {
                                         account: filtered[i].account,
                                         metadata: md,
-                                        jsonData: null,
+                                        jsonData: {},
                                         tokenModel: {
                                             amount: filtered[i].amount,
                                             source: filtered[i].account.toBase58(),

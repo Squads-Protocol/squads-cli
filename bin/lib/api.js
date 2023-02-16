@@ -12,8 +12,6 @@ var spl_token_2 = require("@solana/spl-token");
 var spl_token_3 = require("@solana/spl-token");
 var API = /** @class */ (function () {
     function API(wallet, connection, programId, programManagerId) {
-        if (programId === void 0) { programId = null; }
-        if (programManagerId === void 0) { programManagerId = null; }
         var _this = this;
         this.getSquadExtended = function (ms) { return tslib_1.__awaiter(_this, void 0, void 0, function () {
             return tslib_1.__generator(this, function (_a) {
@@ -111,7 +109,7 @@ var API = /** @class */ (function () {
                     case 8:
                         e_1 = _b.sent();
                         console.log("Error funding vault", e_1);
-                        throw new Error(e_1);
+                        throw e_1;
                     case 9: return [2 /*return*/, tx];
                 }
             });
@@ -188,7 +186,7 @@ var API = /** @class */ (function () {
             });
         }); };
         this.addKeyTransaction = function (msPDA, key) { return tslib_1.__awaiter(_this, void 0, void 0, function () {
-            var txBuilder, _a, txInstructions, txPDA, activateIx, _b, blockhash, lastValidBlockHeight, tx, sig;
+            var txBuilder, _a, txInstructions, txPDA, activateIx, _b, blockhash, lastValidBlockHeight, tx, topup, sig;
             return tslib_1.__generator(this, function (_c) {
                 switch (_c.label) {
                     case 0: return [4 /*yield*/, this.squads.getTransactionBuilder(msPDA, 0)];
@@ -201,26 +199,33 @@ var API = /** @class */ (function () {
                         return [4 /*yield*/, this.squads.buildActivateTransaction(msPDA, txPDA)];
                     case 4:
                         activateIx = _c.sent();
+                        console.log("transaction instructions", JSON.stringify(txInstructions, null, 2));
                         return [4 /*yield*/, this.connection.getLatestBlockhash()];
                     case 5:
                         _b = _c.sent(), blockhash = _b.blockhash, lastValidBlockHeight = _b.lastValidBlockHeight;
                         tx = new anchor.web3.Transaction({ blockhash: blockhash, lastValidBlockHeight: lastValidBlockHeight, feePayer: this.wallet.publicKey });
+                        return [4 /*yield*/, this.squads.checkGetTopUpInstruction(msPDA)];
+                    case 6:
+                        topup = _c.sent();
+                        if (topup) {
+                            tx.add(topup);
+                        }
                         tx.add.apply(tx, txInstructions);
                         tx.add(activateIx);
                         console.log("Transaction composed");
                         return [4 /*yield*/, this.wallet.signTransaction(tx)];
-                    case 6:
+                    case 7:
                         tx = _c.sent();
                         console.log("Transaction signed");
                         console.log("Sending");
                         return [4 /*yield*/, this.connection.sendRawTransaction(tx.serialize(), { skipPreflight: true })];
-                    case 7:
+                    case 8:
                         sig = _c.sent();
                         return [4 /*yield*/, this.connection.confirmTransaction(sig, { commitment: "confirmed" })];
-                    case 8:
+                    case 9:
                         _c.sent();
                         return [4 /*yield*/, this.squads.approveTransaction(txPDA)];
-                    case 9:
+                    case 10:
                         _c.sent();
                         return [2 /*return*/, this.squads.getTransaction(txPDA)];
                 }
