@@ -2,8 +2,9 @@ import {programs} from "@metaplex/js";
 import {TOKEN_PROGRAM_ID} from '@solana/spl-token';
 import {getMultipleAccountsBatch, shortenTextEnd} from "./utils.js";
 import axios from "axios";
+import { Connection, PublicKey } from "@solana/web3.js";
 
-export const checkIsNFT = async (connection, acc) => {
+export const checkIsNFT = async (connection: Connection, acc: any) => {
     try {
         const edition = await programs.metadata.Metadata.getEdition(connection, acc.account.data.parsed.info.mint)
         if (edition)
@@ -13,7 +14,7 @@ export const checkIsNFT = async (connection, acc) => {
     }
 }
 
-export const getNFTAccounts = async (connection, publicKey) => {
+export const getNFTAccounts = async (connection: Connection, publicKey: PublicKey) => {
     const { value } = await connection.getParsedTokenAccountsByOwner(publicKey, {programId: TOKEN_PROGRAM_ID});
     const tokenMap = value.map(async ({ account, pubkey }) => {
         const { data } = account;
@@ -40,7 +41,7 @@ export const getNFTAccounts = async (connection, publicKey) => {
             return getMultipleAccountsBatch(connection, filtered.map(f => f.metadataPda))
                 .then(pdaRes => {
 
-                    return pdaRes.map((mpr, i) => {
+                    return pdaRes.map((mpr: any, i) => {
                         // try to create the Metadata object
                         let md = null;
                         try {
@@ -54,6 +55,7 @@ export const getNFTAccounts = async (connection, publicKey) => {
                             return {
                                 account: filtered[i].account,
                                 metadata: md,
+                                jsonData: {} as any,
                                 tokenModel: {
                                     amount: filtered[i].amount,
                                     source: filtered[i].account.toBase58(),
@@ -85,7 +87,7 @@ export const getNFTAccounts = async (connection, publicKey) => {
         })
 };
 
-export const getOldNFTAccounts = async (connection, publicKey) => {
+export const getOldNFTAccounts = async (connection: Connection, publicKey: PublicKey) => {
     const { value } = await connection.getParsedTokenAccountsByOwner(publicKey, {programId: TOKEN_PROGRAM_ID});
     const tokenMap = value.map(async ({ account, pubkey }) => {
         const { data } = account;
@@ -111,6 +113,9 @@ export const getOldNFTAccounts = async (connection, publicKey) => {
                 .then(pdaRes => {
 
                     return pdaRes.map((mpr, i) => {
+                        if (!mpr) {
+                            return null;
+                        }
                         // try to create the Metadata object
                         let md = null;
                         try {
@@ -125,6 +130,7 @@ export const getOldNFTAccounts = async (connection, publicKey) => {
                             return {
                                 account: filtered[i].account,
                                 metadata: md,
+                                jsonData: {} as any,
                                 tokenModel: {
                                     amount: filtered[i].amount,
                                     source: filtered[i].account.toBase58(),

@@ -1,0 +1,21 @@
+{
+    "compilerOptions": {
+      "outDir": "./bin",
+      "allowJs": true,
+      "target": "es5",
+      "rootDir": "src",
+      "esModuleInterop": true,
+      "skipLibCheck": true,
+      "sourceMap": true,
+      "moduleResolution": "node",
+      "resolveJsonModule": true,
+      "module": "commonjs",
+      "types": ["node"],
+      "lib": ["es6", "es2015", "dom", "es2021"],
+      "baseUrl": ".",
+      "strict": true,
+      "importHelpers": true,
+    },
+    "exclude": ["node_modules", "dist"],
+    "include": ["src/**/*"]
+  }

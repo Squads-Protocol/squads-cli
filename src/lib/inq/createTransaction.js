@@ -1,5 +1,5 @@
 import inquirer from "inquirer";
-import {web3} from "@project-serum/anchor";
+import {web3} from "@coral-xyz/anchor";
 
 export default  () => {
 const questions = [

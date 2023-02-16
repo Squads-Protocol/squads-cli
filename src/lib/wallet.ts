@@ -1,7 +1,7 @@
 import os from "os";
 import fs from "fs";
-import * as anchor from "@project-serum/anchor";
-import Wallet from "@project-serum/anchor";
+import * as anchor from "@coral-xyz/anchor";
+import Wallet from "@coral-xyz/anchor";
 import _ from "lodash";
 // const filelist = _.without(fs.readdirSync('.'), '.git', '.gitignore');
 
@@ -9,13 +9,15 @@ const homedir = os.homedir();
 const defaultWalletPath = `${homedir}/.config/solana/id.json`;
 
 class CliWallet {
-    walletPath;
-    wallet;
-    constructor(walletInitPath = ""){
-        if(!walletInitPath || walletInitPath.length < 1){
-            this.walletPath = defaultWalletPath;
+    walletPath: string;
+    wallet: anchor.Wallet;
+
+    constructor(walletInitPath?: string){
+        this.walletPath = defaultWalletPath;
+        if(walletInitPath && walletInitPath.length > 0){
+            this.walletPath = walletInitPath;
         }
-        this.loadCliWallet();
+        this.wallet = this.loadCliWallet();
     }
 
     loadCliWallet(){
@@ -25,10 +27,11 @@ class CliWallet {
         }catch(e){
             console.log("Failed to read ", this.walletPath);
             console.log("Error reading wallet file: ", e);
-            throw new Error(e);
+            throw e;
         }
         const walletKeypair = anchor.web3.Keypair.fromSecretKey(Uint8Array.from(walletJSON));
         this.wallet = new anchor.Wallet(walletKeypair);
+        return this.wallet;
     }
 }
 

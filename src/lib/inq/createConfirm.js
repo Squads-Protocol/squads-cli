@@ -1,5 +1,5 @@
 import inquirer from "inquirer";
-import * as anchor from "@project-serum/anchor";
+import * as anchor from "@coral-xyz/anchor";
 
 export default (createKey, members, threshold) => {
 console.log("createKey: ", createKey);

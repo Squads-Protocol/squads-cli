@@ -1,4 +1,4 @@
-import {LAMPORTS_PER_SOL} from "@solana/web3.js";
+import {Connection, LAMPORTS_PER_SOL, PublicKey} from "@solana/web3.js";
 import {TOKEN_PROGRAM_ID} from "@solana/spl-token";
 import {checkIsNFT} from "./nfts.js";
 import {TokenListProvider} from "@solana/spl-token-registry";
@@ -6,7 +6,7 @@ import {shortenTextEnd} from "./utils.js";
 import {programs} from "@metaplex/js";
 import axios from "axios";
 
-export const getAssets = async (connection, userKey) => {
+export const getAssets = async (connection: Connection, userKey: PublicKey) => {
     console.log("Getting accounts for:", userKey.toBase58());
     const usableTokens = [];
 

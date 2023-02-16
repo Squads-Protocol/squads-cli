@@ -1,10 +1,10 @@
-import {web3} from "@project-serum/anchor";
+import {web3} from "@coral-xyz/anchor";
 
 class CliConnection {
     connection;
     cluster;
-    constructor(hostUrl = null){
-        let cluster = "";
+    constructor(hostUrl?: string | undefined){
+        let cluster;
         if (hostUrl === "localnet"){
             cluster = "http://127.0.0.1:8899";
         }
@@ -21,6 +21,9 @@ class CliConnection {
             cluster = hostUrl;
         }
         this.cluster = cluster;
+        if (!cluster){
+            throw new Error("Invalid cluster provided");
+        }
         this.connection = new web3.Connection(cluster);
     }
 

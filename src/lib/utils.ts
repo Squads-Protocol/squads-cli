@@ -1,4 +1,6 @@
-export function shortenTextEnd(text, chars) {
+import { AccountInfo, Commitment, Connection, PublicKey } from "@solana/web3.js";
+
+export function shortenTextEnd(text: string, chars: number) {
     const cleanedText = text.replaceAll("\x00", "")
     if (cleanedText.length > chars)
         return `${cleanedText.substring(0, chars)}...`;
@@ -6,12 +8,12 @@ export function shortenTextEnd(text, chars) {
 }
 
 export async function getMultipleAccountsBatch(
-    connection,
-    publicKeys,
-    commitment
-){
-    const keys = []
-    let tempKeys = []
+    connection: Connection,
+    publicKeys: PublicKey[],
+    commitment: Commitment = "processed"
+): Promise<Array<null | { publicKey: PublicKey; account: AccountInfo<Buffer> }>> {
+    const keys: PublicKey[][] = []
+    let tempKeys: PublicKey[] = []
 
     publicKeys.forEach((k) => {
         if (tempKeys.length >= 100) {
@@ -24,9 +26,14 @@ export async function getMultipleAccountsBatch(
         keys.push(tempKeys)
     }
 
-    const accounts = [];
+    const accounts: Array<null | {
+        executable: any
+        owner: PublicKey
+        lamports: any
+        data: Buffer
+    }> = []
 
-    const resArray = {};
+    const resArray: { [key: number]: any } = {}
     await Promise.all(
         keys.map(async (key, index) => {
             resArray[index] = await connection.getMultipleAccountsInfo(key, commitment)
@@ -37,6 +44,7 @@ export async function getMultipleAccountsBatch(
         .sort((a, b) => parseInt(a, 10) - parseInt(b, 10))
         .forEach((itemIndex) => {
             const res = resArray[parseInt(itemIndex, 10)]
+            // eslint-disable-next-line no-restricted-syntax
             for (const account of res) {
                 accounts.push(account)
             }

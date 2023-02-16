@@ -1,5 +1,5 @@
 import inquirer from "inquirer";
-import {web3, utils} from "@project-serum/anchor";
+import {web3, utils} from "@coral-xyz/anchor";
 import base58 from "bs58";
 
 const inputProgramIdInq = async () => {

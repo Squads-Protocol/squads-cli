@@ -2,9 +2,13 @@ import chalk from 'chalk';
 import clear from 'clear';
 import figlet from 'figlet';
 import inquirer from 'inquirer';
-import * as anchor from "@project-serum/anchor";
+import * as anchor from "@coral-xyz/anchor";
 import CLI from "clui";
 import "console.table";
+
+import { getAuthorityPDA, DEFAULT_MULTISIG_PROGRAM_ID, DEFAULT_PROGRAM_MANAGER_PROGRAM_ID } from '@sqds/sdk';
+import BN from 'bn.js';
+import { PublicKey } from '@solana/web3.js';
 import {
     mainMenu,
     viewMultisigsMenu,
@@ -28,18 +32,17 @@ import {
 
 import API from "./api.js";
 
-import { getAuthorityPDA, DEFAULT_MULTISIG_PROGRAM_ID, DEFAULT_PROGRAM_MANAGER_PROGRAM_ID } from '@sqds/sdk';
-import { BN } from 'bn.js';
-import { PublicKey } from '@solana/web3.js';
 import { shortenTextEnd } from './utils.js';
 
 const Spinner = CLI.Spinner;
 class Menu{
-    multisigs = [];
+    programId: PublicKey;
+    programManagerId: PublicKey;
+    multisigs: any[] = [];
     wallet;
     api;
     connection;
-    constructor(wallet, connection, programId, programManagerId) {
+    constructor(wallet: any, connection: any, programId?: string, programManagerId?: string) {
         this.wallet = wallet.wallet;
         this.connection = connection;
         this.programId = programId ? new PublicKey(programId) : DEFAULT_MULTISIG_PROGRAM_ID;
@@ -48,18 +51,19 @@ class Menu{
         this.top();
     }
 
-    changeWallet(wallet){
+    changeWallet(wallet: any){
         this.wallet = wallet;
         this.api = new API(wallet.wallet, this.connection, this.programId, this.programManagerId);
     }
 
-    changeConnection(connection){
+    changeConnection(connection: any){
         this.connection = connection;
         this.api = new API(this.wallet, connection, this.programId, this.programManagerId);
     }
 
-    header = async (vault = null) => {
+    header = async (vault?: PublicKey) => {
         clear();
+        console.log(`ProgramId: ${this.programId.toBase58()}`);
         console.log(
             chalk.yellow(
                 figlet.textSync('SQUADS', { font: "Slant", horizontalLayout: 'full' })
@@ -77,7 +81,7 @@ class Menu{
     }
 
     multisigList = async () => {
-        const loadAuthorities = async (ms) => {
+        const loadAuthorities = async (ms: any[]) => {
             return Promise.all(ms.map(async (msObj,i) => {
                 const [mAuth] = await getAuthorityPDA(msObj.publicKey, new BN(1), this.api.programId);
                 return {
@@ -114,7 +118,7 @@ class Menu{
         }
     };
 
-    multisig = async (ms) => {
+    multisig = async (ms: any) => {
         const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
         this.header(vault);
         console.log("Info");
@@ -155,7 +159,7 @@ class Menu{
         }
     };
 
-    transactions = async (txs, ms) => {
+    transactions = async (txs: any[], ms: any) => {
         const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
         this.header(vault);
         const {action} = await transactionsMenu(txs, this.wallet.publicKey);
@@ -168,7 +172,7 @@ class Menu{
         }
     };
 
-    createTransaction = async (ms) => {
+    createTransaction = async (ms: any) => {
         const {assemble} = await inquirer.prompt({
             default: "",
             name: 'assemble',
@@ -252,7 +256,7 @@ class Menu{
         }
     };
 
-    transaction = async (tx, ms, txs) => {
+    transaction = async (tx: any, ms: any, txs: any[]) => {
         const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
         this.header(vault);
         const [authority] = await getAuthorityPDA(ms.publicKey, new BN(tx.authorityIndex,10), this.api.programId);
@@ -314,7 +318,7 @@ class Menu{
                     this.transaction(updatedTx, updatedMs, txs);
                 }catch(e){
                     status.stop();
-                    console.log(e.message);
+                    console.log(JSON.stringify(e));
                     await continueInq();
                     this.transaction(tx, ms, txs);
                 }                
@@ -324,7 +328,7 @@ class Menu{
             }
         }else if(action === "Add Instruction"){
             const ix = await addInstructionInq();
-            if (ix.programId){
+            if (ix && ix.programId){
                 clear();
                 this.header();
                 console.log("ProgramId: " + chalk.blue(ix.programId.toBase58()));
@@ -343,7 +347,7 @@ class Menu{
                     status.start();
                     try {
                         await this.api.addInstruction(tx.publicKey, ix);
-                        newTx = await this.api.getTransaction(tx.publicKey);
+                        newTx = await this.api.squads.getTransaction(tx.publicKey);
                         status.stop();
                         console.log("Instruction added!");
                         await continueInq();
@@ -387,7 +391,7 @@ class Menu{
         }
     };
 
-    vault = async (ms, vaultPDA, vd) => {
+    vault = async (ms: any, vaultPDA: PublicKey, vd: any) => {
         this.header();
         console.log("Vault Address: " + chalk.blue(vaultPDA.toBase58()));
         console.table(vd.displayTokens);
@@ -395,14 +399,14 @@ class Menu{
         this.multisig(ms);
     }
 
-    useAsset = async (ms, asset) => {
+    useAsset = async (ms: any, asset: any) => {
         this.header();
     }
 
-    settings = async (ms) => {
+    settings = async (ms: any) => {
         const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1,10), this.api.programId);
         this.header(vault);
-        const owners = ms.keys.map(m => {
+        const owners = ms.keys.map((m: PublicKey) => {
             return  m.toBase58();
         })
         console.table([{"Owners": owners}]);
@@ -423,7 +427,7 @@ class Menu{
         }
     }
 
-    addKey = async (ms) => {
+    addKey = async (ms: any) => {
         const {memberKey} = await inquirer.prompt({default: "", name: 'memberKey', type: 'input', message: `Enter the public key of the member you want to add (base58):`});
         if (memberKey === "") {
             this.settings(ms);
@@ -452,9 +456,9 @@ class Menu{
         }
     };
 
-    removeKey = async (ms) => {
+    removeKey = async (ms: any) => {
         this.header();
-        const choices = ms.keys.map(k => k.toBase58());
+        const choices = ms.keys.map((k: PublicKey) => k.toBase58());
         choices.push("<- Go back");
         const {memberKey} = await inquirer.prompt({choices, name: 'memberKey', type: 'list', message: `Which key do you want to remove?`});
         if (memberKey === "<- Go back") {
@@ -483,9 +487,9 @@ class Menu{
         }
     };
 
-    changeThreshold = async (ms) => {
+    changeThreshold = async (ms: any) => {
         this.header();
-        const choices = ms.keys.map(k => k.toBase58());
+        const choices = ms.keys.map((k: PublicKey) => k.toBase58());
         choices.push("<- Go back");
         const {threshold} = await inquirer.prompt({
             default: "",
@@ -538,7 +542,7 @@ class Menu{
         }
     }
 
-    program = async (ms) => {
+    program = async (ms: any) => {
         this.header();
         const {programId} = await promptProgramId();
         if (programId.length < 1) {
@@ -547,7 +551,7 @@ class Menu{
             const status = new Spinner('Fetching program data...');
             status.start();
             try {
-                const programAuthority = await getProgramDataAuthority(new anchor.web3.PublicKey(programId));
+                const programAuthority = await this.api.getProgramDataAuthority(new anchor.web3.PublicKey(programId));
                 chalk.blue("Current program data authority: " + programAuthority);
                 status.stop();
                 if (programAuthority !== this.wallet.publicKey.toBase58()) {
@@ -566,7 +570,7 @@ class Menu{
         }
     }
 
-    programAuthority = async (ms, currentAuthority, programId) => {
+    programAuthority = async (ms: any, currentAuthority: PublicKey, programId: string) => {
         const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
         this.header(vault);
         console.log(`This will create a safe upgrade authority transfer transaction of ${programId} to the Squad vault`);
@@ -646,7 +650,7 @@ class Menu{
         }
     }
 
-    ata = async (ms) => {
+    ata = async (ms: any) => {
         clear();
         const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
         this.header(vault);
