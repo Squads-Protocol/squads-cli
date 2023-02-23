@@ -340,10 +340,10 @@ var API = /** @class */ (function () {
             var ataPubkey, createATAIx, _a, blockhash, lastValidBlockHeight, tx, sig;
             return tslib_1.__generator(this, function (_b) {
                 switch (_b.label) {
-                    case 0: return [4 /*yield*/, spl_token_1.Token.getAssociatedTokenAddress(spl_token_2.ASSOCIATED_TOKEN_PROGRAM_ID, spl_token_3.TOKEN_PROGRAM_ID, mint, owner, true)];
+                    case 0: return [4 /*yield*/, (0, spl_token_1.getAssociatedTokenAddress)(mint, owner, true, spl_token_3.TOKEN_PROGRAM_ID, spl_token_2.ASSOCIATED_TOKEN_PROGRAM_ID)];
                     case 1:
                         ataPubkey = _b.sent();
-                        return [4 /*yield*/, spl_token_1.Token.createAssociatedTokenAccountInstruction(spl_token_2.ASSOCIATED_TOKEN_PROGRAM_ID, spl_token_3.TOKEN_PROGRAM_ID, mint, ataPubkey, owner, this.wallet.publicKey)];
+                        return [4 /*yield*/, (0, spl_token_1.createAssociatedTokenAccountInstruction)(this.wallet.publicKey, ataPubkey, owner, mint, spl_token_3.TOKEN_PROGRAM_ID, spl_token_2.ASSOCIATED_TOKEN_PROGRAM_ID)];
                     case 2:
                         createATAIx = _b.sent();
                         return [4 /*yield*/, this.connection.getLatestBlockhash()];

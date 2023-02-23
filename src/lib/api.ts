@@ -4,7 +4,7 @@ import * as anchor from "@coral-xyz/anchor";
 import BN from "bn.js";
 import { getProgramData, upgradeSetAuthorityIx } from "./program.js";
 import { getAssets } from "./assets.js";
-import {Token} from "@solana/spl-token";
+import {getAssociatedTokenAddress,createAssociatedTokenAccountInstruction} from "@solana/spl-token";
 import {idl} from "../info";
 import { ASSOCIATED_TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
@@ -226,14 +226,14 @@ class API{
     }
 
     async createATA(mint: PublicKey, owner: PublicKey){
-        const ataPubkey = await Token.getAssociatedTokenAddress(ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID,mint,owner,true)
-        const createATAIx = await Token.createAssociatedTokenAccountInstruction(
-            ASSOCIATED_TOKEN_PROGRAM_ID,
-            TOKEN_PROGRAM_ID,
-            mint,
+        const ataPubkey = await getAssociatedTokenAddress(mint,owner,true,TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID)
+        const createATAIx = await createAssociatedTokenAccountInstruction(
+            this.wallet.publicKey,
             ataPubkey,
             owner,
-            this.wallet.publicKey,
+            mint,
+            TOKEN_PROGRAM_ID,
+            ASSOCIATED_TOKEN_PROGRAM_ID,
         );
 
         const {blockhash, lastValidBlockHeight} = await this.connection.getLatestBlockhash();

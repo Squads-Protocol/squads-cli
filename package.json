@@ -1,6 +1,6 @@
 {
   "name": "@sqds/cli",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "",
   "main": "bin/index.js",
   "scripts": {
@@ -27,9 +27,9 @@
     "@metaplex/js": "^4.12.0",
     "@octokit/auth-basic": "^1.4.8",
     "@octokit/rest": "^19.0.3",
-    "@solana/spl-token": "^0.3.7",
+    "@solana/spl-token": "^0.3.6",
     "@solana/spl-token-registry": "^0.2.4574",
-    "@solana/web3.js": "^1.63.1",
+    "@solana/web3.js": "^1.66.2",
     "@sqds/sdk": "^2.0.2",
     "@types/bn.js": "^5.1.1",
     "@types/clear": "^0.1.2",
@@ -66,5 +66,9 @@
     "@types/node": "^18.13.0",
     "@types/yargs": "^17.0.22",
     "ts-node": "^10.9.1"
+  },
+  "resolutions": {
+    "@solana/web3.js": "^1.66.2",
+    "@solana/spl-token": "^0.3.6"
   }
 }
