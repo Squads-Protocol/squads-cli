@@ -7,7 +7,8 @@ export const nftMainInq = () => {
         name: 'action',
         message: 'What would you like to do?',
         choices: [
-            "Update Authority Change",
+            {name: "Update Authority Change", value: 0},
+            {name: "Validate Metadata Accounts", value: 1},
             "Back",
         ],
       }
@@ -126,6 +127,45 @@ export const nftSafeSigningInq = () => {
             name: 'safeSign',
             message: 'Do you want to enforce that the new authority is also a signer? It will require the new authority to be the executor of the multisig transaction. (Recommended)',
         }
+    ];
+    return inquirer.prompt(questions);
+};
+
+export const nftValidateCurrentAuthorityInq = (vault) => {
+    const questions = [
+        {
+            type: 'input',
+            name: 'mintList',
+            message: 'Enter the location of the mint list file (.json)',
+
+        },
+        {
+            type: 'list',
+            name: 'type',
+            message: 'Who is the current authorities for the metadata accounts?',
+            choices: [
+                {name: `Squad Vault (${vault.toBase58()})`, value: 0},
+                {name: "A different address", value: 1},
+            ],
+        },
+        {
+            when: (answers) => answers.type === 1,
+            validate: (answers) => {
+                if (!answers.publicKey || answers.publicKey.length < 0){
+                    return true;
+                }
+                try {
+                    new PublicKey(answers.publicKey);
+                    return true;
+                }catch (e) {
+                    return false;
+                }
+            },
+            type: 'input',
+            name: 'publicKey',
+            message: 'Enter the current authority address (base58)',
+        },
+
     ];
     return inquirer.prompt(questions);
 };

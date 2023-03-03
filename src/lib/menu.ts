@@ -38,6 +38,7 @@ import {
     nftValidateOwnerInq,
     nftUpdateShowFailedMetasInq,
     nftSafeSigningInq,
+    nftValidateCurrentAuthorityInq,
 } from "./inq/index.js";
 
 import API from "./api.js";
@@ -698,8 +699,10 @@ class Menu{
         const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
         this.header(vault);
         const {action} = await nftMainInq();
-        if (action === "Update Authority Change") {
+        if (action === 0) {
             this.nftAuthorityChange(ms);
+        } else if (action === 1) {
+            this.nftValidateMetaAuthorities(ms);
         } else {
             this.multisig(ms);
         }
@@ -882,6 +885,51 @@ class Menu{
         }
         this.nfts(ms);
     };
+
+    nftValidateMetaAuthorities = async (ms: any) => {
+        clear();
+        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+        this.header(vault);
+        let error = false;
+        const {mintList, type, publicKey} = await nftValidateCurrentAuthorityInq(vault);
+        let allMints: PublicKey[] = [];
+        try {
+            allMints = await loadNFTMints(mintList);
+        } catch (e) {
+            console.log("There was an error loading the mint list file: " + chalk.red(e));
+            error = true;
+        }
+
+        let checkAuthority: PublicKey = new PublicKey(publicKey);
+        if (type === 1) {
+            if(publicKey && publicKey.length > 0) {
+                checkAuthority = new PublicKey(publicKey);
+            }else {
+                error = true;
+            }
+        }
+
+        if (!error) {
+            const status = new Spinner(`Checking that the metadata accounts are valid and currently owned by ${checkAuthority}...`);
+            status.start();
+            const validateAuthorityResult = await checkAllMetasAuthority(this.api.connection, allMints.map((m:PublicKey) => getMetadataAccount(m)), checkAuthority);
+            status.stop();
+            if (validateAuthorityResult.failures.length > 0) {
+                console.log(chalk.red(`There were some errors validating authority ${validateAuthorityResult.failures.length} metadata accounts:`));
+                error = true;
+                const {showFail} = await nftUpdateShowFailedMetasInq();
+                if(showFail){
+                    console.log(JSON.stringify(validateAuthorityResult.failures));
+                }
+                await continueInq();
+            } else {
+                // succesfully validated all the metadata accounts
+                console.log(`Successfully validated authority of ${validateAuthorityResult.success.length} metadata accounts`);
+                await continueInq();
+            }
+        }
+        this.nfts(ms);
+    }
 };
 
 export default Menu;
