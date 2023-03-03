@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.continueInq = exports.basicConfirm = exports.transactionPrompt = exports.promptProgramId = exports.addInstructionInq = exports.addTransactionInq = exports.createATAInq = exports.createTransactionInq = exports.createMultisigConfirmInq = exports.createMultisigThresholdInq = exports.createMultisigMemberInq = exports.createMultisigCreateKeyInq = exports.transactionsMenu = exports.multisigSettingsMenu = exports.withdrawInq = exports.vaultMenu = exports.multisigMainMenu = exports.viewMultisigsMenu = exports.mainMenu = void 0;
+exports.nftSafeSigningInq = exports.nftUpdateShowFailedMetasInq = exports.nftValidateOwnerInq = exports.nftUpdateShowFailedMintsInq = exports.nftUpdateAuthorityConfirmIncomingInq = exports.nftUpdateAuthorityConfirmInq = exports.nftValidateMetasInq = exports.nftUpdateAuthorityInq = exports.nftMainInq = exports.continueInq = exports.basicConfirm = exports.transactionPrompt = exports.promptProgramId = exports.addInstructionInq = exports.addTransactionInq = exports.createATAInq = exports.createTransactionInq = exports.createMultisigConfirmInq = exports.createMultisigThresholdInq = exports.createMultisigMemberInq = exports.createMultisigCreateKeyInq = exports.transactionsMenu = exports.multisigSettingsMenu = exports.withdrawInq = exports.vaultMenu = exports.multisigMainMenu = exports.viewMultisigsMenu = exports.mainMenu = void 0;
 var tslib_1 = require("tslib");
 var main_js_1 = tslib_1.__importDefault(require("./main.js"));
 exports.mainMenu = main_js_1.default;
@@ -40,4 +40,14 @@ var withdraw_js_1 = tslib_1.__importDefault(require("./withdraw.js"));
 exports.withdrawInq = withdraw_js_1.default;
 var createATA_js_1 = tslib_1.__importDefault(require("./createATA.js"));
 exports.createATAInq = createATA_js_1.default;
+var nftMenu_js_1 = require("./nftMenu.js");
+Object.defineProperty(exports, "nftMainInq", { enumerable: true, get: function () { return nftMenu_js_1.nftMainInq; } });
+Object.defineProperty(exports, "nftUpdateAuthorityInq", { enumerable: true, get: function () { return nftMenu_js_1.nftUpdateAuthorityInq; } });
+Object.defineProperty(exports, "nftValidateMetasInq", { enumerable: true, get: function () { return nftMenu_js_1.nftValidateMetasInq; } });
+Object.defineProperty(exports, "nftUpdateAuthorityConfirmInq", { enumerable: true, get: function () { return nftMenu_js_1.nftUpdateAuthorityConfirmInq; } });
+Object.defineProperty(exports, "nftUpdateAuthorityConfirmIncomingInq", { enumerable: true, get: function () { return nftMenu_js_1.nftUpdateAuthorityConfirmIncomingInq; } });
+Object.defineProperty(exports, "nftUpdateShowFailedMintsInq", { enumerable: true, get: function () { return nftMenu_js_1.nftUpdateShowFailedMintsInq; } });
+Object.defineProperty(exports, "nftValidateOwnerInq", { enumerable: true, get: function () { return nftMenu_js_1.nftValidateOwnerInq; } });
+Object.defineProperty(exports, "nftUpdateShowFailedMetasInq", { enumerable: true, get: function () { return nftMenu_js_1.nftUpdateShowFailedMetasInq; } });
+Object.defineProperty(exports, "nftSafeSigningInq", { enumerable: true, get: function () { return nftMenu_js_1.nftSafeSigningInq; } });
 //# sourceMappingURL=index.js.map

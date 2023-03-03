@@ -9,12 +9,16 @@ var anchor = tslib_1.__importStar(require("@coral-xyz/anchor"));
 var clui_1 = tslib_1.__importDefault(require("clui"));
 require("console.table");
 var sdk_1 = require("@sqds/sdk");
+var constants_js_1 = require("./constants.js");
 var bn_js_1 = tslib_1.__importDefault(require("bn.js"));
 var web3_js_1 = require("@solana/web3.js");
 var index_js_1 = require("./inq/index.js");
 var api_js_1 = tslib_1.__importDefault(require("./api.js"));
 var utils_js_1 = require("./utils.js");
+var nfts_js_1 = require("./nfts.js");
+var metadataInstructions_js_1 = require("./metadataInstructions.js");
 var Spinner = clui_1.default.Spinner;
+var Progress = clui_1.default.Progress;
 var Menu = /** @class */ (function () {
     function Menu(wallet, connection, programId, programManagerId) {
         var _this = this;
@@ -114,8 +118,8 @@ var Menu = /** @class */ (function () {
                         this.header(vault);
                         console.log("Info");
                         console.log("-----------------------------------------------------------");
-                        console.log("Multisig account: " + chalk_1.default.white(ms.publicKey.toBase58()));
                         console.log("(" + chalk_1.default.red("DO NOT") + " send assets to this address. Use ONLY vault address shown above)");
+                        console.log("Multisig account: " + chalk_1.default.white(ms.publicKey.toBase58()));
                         console.log(" ");
                         return [4 /*yield*/, (0, index_js_1.multisigMainMenu)(ms)];
                     case 2:
@@ -155,6 +159,9 @@ var Menu = /** @class */ (function () {
                         }
                         else if (action === "Create new ATA") {
                             this.ata(ms);
+                        }
+                        else if (action === "Bulk NFT Operations") {
+                            this.nfts(ms);
                         }
                         else {
                             this.multisigList();
@@ -992,6 +999,322 @@ var Menu = /** @class */ (function () {
                         return [3 /*break*/, 9];
                     case 9:
                         this.multisig(ms);
+                        return [2 /*return*/];
+                }
+            });
+        }); };
+        this.nfts = function (ms) { return tslib_1.__awaiter(_this, void 0, void 0, function () {
+            var vault, action;
+            return tslib_1.__generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        (0, clear_1.default)();
+                        return [4 /*yield*/, (0, sdk_1.getAuthorityPDA)(ms.publicKey, new bn_js_1.default(1), this.api.programId)];
+                    case 1:
+                        vault = (_a.sent())[0];
+                        this.header(vault);
+                        return [4 /*yield*/, (0, index_js_1.nftMainInq)()];
+                    case 2:
+                        action = (_a.sent()).action;
+                        if (action === "Update Authority Change") {
+                            this.nftAuthorityChange(ms);
+                        }
+                        else {
+                            this.multisig(ms);
+                        }
+                        return [2 /*return*/];
+                }
+            });
+        }); };
+        this.nftAuthorityChange = function (ms) { return tslib_1.__awaiter(_this, void 0, void 0, function () {
+            var vault, _a, type, publicKey, mintList, newAuthority, error, allMints, e_13, _b;
+            return tslib_1.__generator(this, function (_c) {
+                switch (_c.label) {
+                    case 0:
+                        (0, clear_1.default)();
+                        return [4 /*yield*/, (0, sdk_1.getAuthorityPDA)(ms.publicKey, new bn_js_1.default(1), this.api.programId)];
+                    case 1:
+                        vault = (_c.sent())[0];
+                        this.header(vault);
+                        return [4 /*yield*/, (0, index_js_1.nftUpdateAuthorityInq)()];
+                    case 2:
+                        _a = _c.sent(), type = _a.type, publicKey = _a.publicKey, mintList = _a.mintList;
+                        newAuthority = vault;
+                        error = false;
+                        if (type === 1) {
+                            if (publicKey && publicKey.length > 0) {
+                                newAuthority = new web3_js_1.PublicKey(publicKey);
+                            }
+                            else {
+                                error = true;
+                            }
+                        }
+                        allMints = [];
+                        _c.label = 3;
+                    case 3:
+                        _c.trys.push([3, 5, , 6]);
+                        return [4 /*yield*/, (0, nfts_js_1.loadNFTMints)(mintList)];
+                    case 4:
+                        allMints = _c.sent();
+                        return [3 /*break*/, 6];
+                    case 5:
+                        e_13 = _c.sent();
+                        console.log("There was an error loading the mint list file: " + chalk_1.default.red(e_13));
+                        error = true;
+                        return [3 /*break*/, 6];
+                    case 6:
+                        if (!error) return [3 /*break*/, 8];
+                        return [4 /*yield*/, (0, index_js_1.continueInq)()];
+                    case 7:
+                        _c.sent();
+                        this.nfts(ms);
+                        return [3 /*break*/, 13];
+                    case 8:
+                        _b = type;
+                        switch (_b) {
+                            case 0: return [3 /*break*/, 9];
+                            case 1: return [3 /*break*/, 10];
+                        }
+                        return [3 /*break*/, 11];
+                    case 9:
+                        this.nftAuthorityChangeIncoming(ms, allMints, newAuthority);
+                        return [3 /*break*/, 13];
+                    case 10:
+                        this.nftAuthorityChangeOutgoing(ms, allMints, newAuthority);
+                        return [3 /*break*/, 13];
+                    case 11: return [4 /*yield*/, (0, index_js_1.continueInq)()];
+                    case 12:
+                        _c.sent();
+                        this.nfts(ms);
+                        return [3 /*break*/, 13];
+                    case 13: return [2 /*return*/];
+                }
+            });
+        }); };
+        // this can simply be transferred to the vault directly with metaplex program
+        this.nftAuthorityChangeIncoming = function (ms, mintList, newAuthority) { return tslib_1.__awaiter(_this, void 0, void 0, function () {
+            var vault, validate, error, status_16, validateResult, continueProcessing, confirm_1, status_17, successUpdates, failedUpdates, _i, mintList_1, mint, _a, blockhash, lastValidBlockHeight, updateTx, updateIx, signed, txid, e_14, showFail;
+            return tslib_1.__generator(this, function (_b) {
+                switch (_b.label) {
+                    case 0:
+                        (0, clear_1.default)();
+                        return [4 /*yield*/, (0, sdk_1.getAuthorityPDA)(ms.publicKey, new bn_js_1.default(1), this.api.programId)];
+                    case 1:
+                        vault = (_b.sent())[0];
+                        this.header(vault);
+                        return [4 /*yield*/, (0, index_js_1.nftValidateMetasInq)()];
+                    case 2:
+                        validate = (_b.sent()).validate;
+                        error = false;
+                        if (!validate) return [3 /*break*/, 7];
+                        status_16 = new Spinner("Checking derived metadata accounts...");
+                        status_16.start();
+                        return [4 /*yield*/, (0, nfts_js_1.checkAllMetas)(this.api.connection, mintList.map(function (m) { return (0, nfts_js_1.getMetadataAccount)(m); }))];
+                    case 3:
+                        validateResult = _b.sent();
+                        status_16.stop();
+                        if (!(validateResult.failures.length > 0)) return [3 /*break*/, 5];
+                        console.log(chalk_1.default.red("There were some errors validating ".concat(validateResult.failures.length, " metadata accounts:")));
+                        console.log(JSON.stringify(validateResult.failures));
+                        error = true;
+                        return [4 /*yield*/, (0, index_js_1.continueInq)()];
+                    case 4:
+                        _b.sent();
+                        return [3 /*break*/, 7];
+                    case 5:
+                        // succesfully validated all the metadata accounts
+                        console.log("Successfully validated ".concat(validateResult.success.length, " metadata accounts"));
+                        return [4 /*yield*/, (0, index_js_1.continueInq)()];
+                    case 6:
+                        _b.sent();
+                        _b.label = 7;
+                    case 7:
+                        console.log('');
+                        continueProcessing = false;
+                        if (!!error) return [3 /*break*/, 9];
+                        return [4 /*yield*/, (0, index_js_1.nftUpdateAuthorityConfirmIncomingInq)(newAuthority.toBase58(), mintList.length)];
+                    case 8:
+                        confirm_1 = (_b.sent()).confirm;
+                        if (confirm_1) {
+                            continueProcessing = true;
+                        }
+                        _b.label = 9;
+                    case 9:
+                        if (!continueProcessing) return [3 /*break*/, 23];
+                        return [4 /*yield*/, (0, index_js_1.continueInq)()];
+                    case 10:
+                        _b.sent();
+                        console.log("Transfering metadata update authority to the vault, this may take some time depending on the number of mints and your internet connection speed.");
+                        status_17 = new Spinner("Updating authority of the metadata accounts...");
+                        status_17.start();
+                        successUpdates = [];
+                        failedUpdates = [];
+                        _i = 0, mintList_1 = mintList;
+                        _b.label = 11;
+                    case 11:
+                        if (!(_i < mintList_1.length)) return [3 /*break*/, 19];
+                        mint = mintList_1[_i];
+                        _b.label = 12;
+                    case 12:
+                        _b.trys.push([12, 17, , 18]);
+                        return [4 /*yield*/, this.api.connection.getLatestBlockhash()];
+                    case 13:
+                        _a = _b.sent(), blockhash = _a.blockhash, lastValidBlockHeight = _a.lastValidBlockHeight;
+                        updateTx = new web3_js_1.Transaction({ lastValidBlockHeight: lastValidBlockHeight, blockhash: blockhash, feePayer: this.api.wallet.publicKey });
+                        updateIx = (0, metadataInstructions_js_1.updateMetadataAuthorityIx)(newAuthority, this.api.wallet.publicKey, (0, nfts_js_1.getMetadataAccount)(mint));
+                        updateTx.add(updateIx);
+                        return [4 /*yield*/, this.api.wallet.signTransaction(updateTx)];
+                    case 14:
+                        signed = _b.sent();
+                        return [4 /*yield*/, this.api.connection.sendRawTransaction(signed.serialize())];
+                    case 15:
+                        txid = _b.sent();
+                        return [4 /*yield*/, this.api.connection.confirmTransaction(txid, "processed")];
+                    case 16:
+                        _b.sent();
+                        successUpdates.push(mint.toBase58());
+                        return [3 /*break*/, 18];
+                    case 17:
+                        e_14 = _b.sent();
+                        failedUpdates.push(mint.toBase58());
+                        return [3 /*break*/, 18];
+                    case 18:
+                        _i++;
+                        return [3 /*break*/, 11];
+                    case 19:
+                        status_17.stop();
+                        console.log("Successfully transferred ".concat(successUpdates.length, " metadata accounts"));
+                        console.log("Failed to transfer ".concat(failedUpdates.length, " metadata accounts."));
+                        if (!(failedUpdates.length > 0)) return [3 /*break*/, 21];
+                        return [4 /*yield*/, (0, index_js_1.nftUpdateShowFailedMintsInq)()];
+                    case 20:
+                        showFail = (_b.sent()).showFail;
+                        if (showFail) {
+                            console.log(JSON.stringify(failedUpdates));
+                        }
+                        _b.label = 21;
+                    case 21: return [4 /*yield*/, (0, index_js_1.continueInq)()];
+                    case 22:
+                        _b.sent();
+                        _b.label = 23;
+                    case 23:
+                        this.nfts(ms);
+                        return [2 /*return*/];
+                }
+            });
+        }); };
+        // to move the authority out, transaction will need to be created
+        this.nftAuthorityChangeOutgoing = function (ms, mintList, newAuthority) { return tslib_1.__awaiter(_this, void 0, void 0, function () {
+            var vault, error, ownerValidate, status_18, validateAuthorityResult, showFail, continueProcessing, buckets, confirm_2, safeSign, successfullyStagedMetas, status_19, _i, buckets_1, batch, metasAdded, _a, blockhash, lastValidBlockHeight, txMetaTx, txMetaIx, signed, txid, e_15;
+            return tslib_1.__generator(this, function (_b) {
+                switch (_b.label) {
+                    case 0:
+                        (0, clear_1.default)();
+                        return [4 /*yield*/, (0, sdk_1.getAuthorityPDA)(ms.publicKey, new bn_js_1.default(1), this.api.programId)];
+                    case 1:
+                        vault = (_b.sent())[0];
+                        this.header(vault);
+                        error = false;
+                        return [4 /*yield*/, (0, index_js_1.nftValidateOwnerInq)()];
+                    case 2:
+                        ownerValidate = (_b.sent()).ownerValidate;
+                        if (!ownerValidate) return [3 /*break*/, 8];
+                        status_18 = new Spinner("Checking that the metadata accounts are valid and currently owned by the multisig vault...");
+                        status_18.start();
+                        return [4 /*yield*/, (0, nfts_js_1.checkAllMetasAuthority)(this.api.connection, mintList.map(function (m) { return (0, nfts_js_1.getMetadataAccount)(m); }), vault)];
+                    case 3:
+                        validateAuthorityResult = _b.sent();
+                        status_18.stop();
+                        if (!(validateAuthorityResult.failures.length > 0)) return [3 /*break*/, 6];
+                        console.log(chalk_1.default.red("There were some errors validating authority ".concat(validateAuthorityResult.failures.length, " metadata accounts:")));
+                        error = true;
+                        return [4 /*yield*/, (0, index_js_1.nftUpdateShowFailedMetasInq)()];
+                    case 4:
+                        showFail = (_b.sent()).showFail;
+                        if (showFail) {
+                            console.log(JSON.stringify(validateAuthorityResult.failures));
+                        }
+                        return [4 /*yield*/, (0, index_js_1.continueInq)()];
+                    case 5:
+                        _b.sent();
+                        return [3 /*break*/, 8];
+                    case 6:
+                        // succesfully validated all the metadata accounts
+                        console.log("Successfully validated authority of ".concat(validateAuthorityResult.success.length, " metadata accounts"));
+                        return [4 /*yield*/, (0, index_js_1.continueInq)()];
+                    case 7:
+                        _b.sent();
+                        _b.label = 8;
+                    case 8:
+                        console.log('');
+                        continueProcessing = false;
+                        buckets = [];
+                        if (!!error) return [3 /*break*/, 11];
+                        return [4 /*yield*/, (0, nfts_js_1.prepareBulkUpdate)(mintList)];
+                    case 9:
+                        buckets = _b.sent();
+                        return [4 /*yield*/, (0, index_js_1.nftUpdateAuthorityConfirmInq)(newAuthority.toBase58(), mintList.length, buckets.length)];
+                    case 10:
+                        confirm_2 = (_b.sent()).confirm;
+                        if (confirm_2) {
+                            continueProcessing = true;
+                        }
+                        _b.label = 11;
+                    case 11:
+                        if (!continueProcessing) return [3 /*break*/, 25];
+                        return [4 /*yield*/, (0, index_js_1.nftSafeSigningInq)()];
+                    case 12:
+                        safeSign = (_b.sent()).safeSign;
+                        successfullyStagedMetas = [];
+                        console.log("Creating the multisig transactions, this may take some time depending on the number of mints and your internet connection speed.");
+                        status_19 = new Spinner("Initializing metadata authority update multisig transactions...");
+                        status_19.start();
+                        _i = 0, buckets_1 = buckets;
+                        _b.label = 13;
+                    case 13:
+                        if (!(_i < buckets_1.length)) return [3 /*break*/, 23];
+                        batch = buckets_1[_i];
+                        return [4 /*yield*/, (0, nfts_js_1.createAuthorityUpdateTx)(this.api.squads, ms.publicKey, vault, newAuthority, batch, this.api.connection)];
+                    case 14:
+                        metasAdded = _b.sent();
+                        successfullyStagedMetas.push.apply(successfullyStagedMetas, metasAdded.attached);
+                        _b.label = 15;
+                    case 15:
+                        _b.trys.push([15, 21, , 22]);
+                        return [4 /*yield*/, this.api.connection.getLatestBlockhash()];
+                    case 16:
+                        _a = _b.sent(), blockhash = _a.blockhash, lastValidBlockHeight = _a.lastValidBlockHeight;
+                        txMetaTx = new web3_js_1.Transaction({ lastValidBlockHeight: lastValidBlockHeight, blockhash: blockhash, feePayer: this.wallet.publicKey });
+                        return [4 /*yield*/, (0, nfts_js_1.sendTxMetaIx)(ms.publicKey, metasAdded.txPDA, this.wallet.publicKey, { type: 'nftAuthorityUpdate' }, new web3_js_1.PublicKey(constants_js_1.TXMETA_PROGRAM_ID))];
+                    case 17:
+                        txMetaIx = _b.sent();
+                        txMetaTx.add(txMetaIx);
+                        return [4 /*yield*/, this.wallet.signTransaction(txMetaTx)];
+                    case 18:
+                        signed = _b.sent();
+                        return [4 /*yield*/, this.api.connection.sendRawTransaction(signed.serialize())];
+                    case 19:
+                        txid = _b.sent();
+                        return [4 /*yield*/, this.api.connection.confirmTransaction(txid, "processed")];
+                    case 20:
+                        _b.sent();
+                        return [3 /*break*/, 22];
+                    case 21:
+                        e_15 = _b.sent();
+                        console.log(e_15);
+                        return [3 /*break*/, 22];
+                    case 22:
+                        _i++;
+                        return [3 /*break*/, 13];
+                    case 23:
+                        status_19.stop();
+                        console.log("Successfully initiated authority transfer txs for ".concat(successfullyStagedMetas.length, " metadata accounts"));
+                        return [4 /*yield*/, (0, index_js_1.continueInq)()];
+                    case 24:
+                        _b.sent();
+                        _b.label = 25;
+                    case 25:
+                        this.nfts(ms);
                         return [2 /*return*/];
                 }
             });

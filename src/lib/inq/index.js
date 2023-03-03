@@ -17,6 +17,17 @@ import continueInq from "./continue.js";
 import addInstructionInq from "./addInstruction.js";
 import withdrawInq from "./withdraw.js";
 import createATAInq from "./createATA.js";
+import {
+    nftMainInq,
+    nftUpdateAuthorityInq,
+    nftValidateMetasInq,
+    nftUpdateAuthorityConfirmInq,
+    nftUpdateAuthorityConfirmIncomingInq,
+    nftUpdateShowFailedMintsInq,
+    nftValidateOwnerInq,
+    nftUpdateShowFailedMetasInq,
+    nftSafeSigningInq
+} from "./nftMenu.js";
 
 export {
     mainMenu,
@@ -37,5 +48,14 @@ export {
     promptProgramId,
     transactionPrompt,
     basicConfirm,
-    continueInq
+    continueInq,
+    nftMainInq,
+    nftUpdateAuthorityInq,
+    nftValidateMetasInq,
+    nftUpdateAuthorityConfirmInq,
+    nftUpdateAuthorityConfirmIncomingInq,
+    nftUpdateShowFailedMintsInq,
+    nftValidateOwnerInq,
+    nftUpdateShowFailedMetasInq,
+    nftSafeSigningInq
 };

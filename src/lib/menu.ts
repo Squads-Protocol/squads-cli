@@ -7,8 +7,9 @@ import CLI from "clui";
 import "console.table";
 
 import { getAuthorityPDA, DEFAULT_MULTISIG_PROGRAM_ID, DEFAULT_PROGRAM_MANAGER_PROGRAM_ID } from '@sqds/sdk';
+import { TXMETA_PROGRAM_ID } from './constants.js';
 import BN from 'bn.js';
-import { PublicKey } from '@solana/web3.js';
+import { PublicKey, Transaction } from '@solana/web3.js';
 import {
     mainMenu,
     viewMultisigsMenu,
@@ -28,13 +29,27 @@ import {
     basicConfirm,
     continueInq,
     createATAInq,
+    nftMainInq,
+    nftUpdateAuthorityInq,
+    nftValidateMetasInq,
+    nftUpdateAuthorityConfirmInq,
+    nftUpdateAuthorityConfirmIncomingInq,
+    nftUpdateShowFailedMintsInq,
+    nftValidateOwnerInq,
+    nftUpdateShowFailedMetasInq,
+    nftSafeSigningInq,
 } from "./inq/index.js";
 
 import API from "./api.js";
 
 import { shortenTextEnd } from './utils.js';
+import { checkAllMetas, checkAllMetasAuthority, createAuthorityUpdateTx, getMetadataAccount, loadNFTMints, prepareBulkUpdate, sendTxMetaIx } from './nfts.js';
+import { boolean } from 'yargs';
+import { updateMetadataAuthorityIx } from './metadataInstructions.js';
 
 const Spinner = CLI.Spinner;
+const Progress = CLI.Progress;
+
 class Menu{
     programId: PublicKey;
     programManagerId: PublicKey;
@@ -123,8 +138,8 @@ class Menu{
         this.header(vault);
         console.log("Info");
         console.log("-----------------------------------------------------------");
-        console.log("Multisig account: " + chalk.white(ms.publicKey.toBase58()));
         console.log("(" + chalk.red("DO NOT") + " send assets to this address. Use ONLY vault address shown above)");
+        console.log("Multisig account: " + chalk.white(ms.publicKey.toBase58()));
         console.log(" ");
         const {action} = await multisigMainMenu(ms);
         if (action === "Vault") {
@@ -154,6 +169,9 @@ class Menu{
         }
         else if (action === "Create new ATA") {
             this.ata(ms);
+        }
+        else if (action === "Bulk NFT Operations") {
+            this.nfts(ms);
         }else{
             this.multisigList();
         }
@@ -674,6 +692,196 @@ class Menu{
         }
         this.multisig(ms);
     }
+
+    nfts = async (ms: any) => {
+        clear();
+        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+        this.header(vault);
+        const {action} = await nftMainInq();
+        if (action === "Update Authority Change") {
+            this.nftAuthorityChange(ms);
+        } else {
+            this.multisig(ms);
+        }
+    }
+
+    nftAuthorityChange = async (ms: any) => {
+        clear();
+        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+        this.header(vault);
+        const {type, publicKey, mintList} = await nftUpdateAuthorityInq();
+        let newAuthority = vault;
+        let error = false;
+        if (type === 1) {
+            if(publicKey && publicKey.length > 0) {
+                newAuthority = new PublicKey(publicKey);
+            }else {
+                error = true;
+            }
+        }
+
+        // load the mint list from the file path provided
+        let allMints: PublicKey[] = [];
+        try {
+            allMints = await loadNFTMints(mintList);
+        } catch (e) {
+            console.log("There was an error loading the mint list file: " + chalk.red(e));
+            error = true;
+        }
+
+        if (error){
+            await continueInq();
+            this.nfts(ms);
+        } else {
+            switch(type) {
+                case 0:
+                    this.nftAuthorityChangeIncoming(ms, allMints, newAuthority);
+                    break;
+                case 1:
+                    this.nftAuthorityChangeOutgoing(ms, allMints, newAuthority);
+                    break;
+                default:
+                    await continueInq();
+                    this.nfts(ms);
+                break;
+            }
+        }
+    }
+
+    // this can simply be transferred to the vault directly with metaplex program
+    nftAuthorityChangeIncoming = async (ms: any, mintList: PublicKey[], newAuthority: PublicKey) => {
+        clear();
+        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+        this.header(vault);
+        const {validate} = await nftValidateMetasInq();
+        let error = false;
+        if (validate) {
+            // run validation
+            const status = new Spinner("Checking derived metadata accounts...");
+            status.start();
+            const validateResult = await checkAllMetas(this.api.connection, mintList.map(m => getMetadataAccount(m)));
+            status.stop();
+            if (validateResult.failures.length > 0) {
+                console.log(chalk.red(`There were some errors validating ${validateResult.failures.length} metadata accounts:`));
+                console.log(JSON.stringify(validateResult.failures));
+                error = true;
+                await continueInq();
+            } else {
+                // succesfully validated all the metadata accounts
+                console.log(`Successfully validated ${validateResult.success.length} metadata accounts`);
+                await continueInq();
+            }
+        }
+        console.log('');
+        let continueProcessing = false;
+        if (!error) {
+            const {confirm} = await nftUpdateAuthorityConfirmIncomingInq(newAuthority.toBase58(), mintList.length);
+            if (confirm) {
+                continueProcessing = true;
+            }
+        }
+        if (continueProcessing) {
+            await continueInq();
+            console.log("Transfering metadata update authority to the vault, this may take some time depending on the number of mints and your internet connection speed.");
+            const status = new Spinner("Updating authority of the metadata accounts...");
+            status.start();
+            const successUpdates = [];
+            const failedUpdates = [];
+            for (const mint of mintList) {
+                try {
+                    const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
+                    const updateTx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.api.wallet.publicKey});
+                    const updateIx = updateMetadataAuthorityIx(newAuthority, this.api.wallet.publicKey, getMetadataAccount(mint));
+                    updateTx.add(updateIx);
+                    const signed = await this.api.wallet.signTransaction(updateTx);
+                    const txid = await this.api.connection.sendRawTransaction(signed.serialize());
+                    await this.api.connection.confirmTransaction(txid, "processed");
+                    successUpdates.push(mint.toBase58());
+                }catch(e){
+                    failedUpdates.push(mint.toBase58());
+                }
+            }
+            status.stop();
+            console.log(`Successfully transferred ${successUpdates.length} metadata accounts`);
+            console.log(`Failed to transfer ${failedUpdates.length} metadata accounts.`);
+            if (failedUpdates.length > 0) {
+                const {showFail} = await nftUpdateShowFailedMintsInq();
+                if(showFail){
+                    console.log(JSON.stringify(failedUpdates));
+                }
+            }
+
+            await continueInq();
+        }
+        this.nfts(ms);
+    };
+
+    // to move the authority out, transaction will need to be created
+    nftAuthorityChangeOutgoing = async (ms: any, mintList: PublicKey[], newAuthority: PublicKey) => {
+        clear();
+        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+        this.header(vault);
+        let error = false;
+        const {ownerValidate} = await nftValidateOwnerInq();
+        if (ownerValidate) {
+            const status = new Spinner("Checking that the metadata accounts are valid and currently owned by the multisig vault...");
+            status.start();
+            const validateAuthorityResult = await checkAllMetasAuthority(this.api.connection, mintList.map(m => getMetadataAccount(m)), vault);
+            status.stop();
+            if (validateAuthorityResult.failures.length > 0) {
+                console.log(chalk.red(`There were some errors validating authority ${validateAuthorityResult.failures.length} metadata accounts:`));
+                error = true;
+                const {showFail} = await nftUpdateShowFailedMetasInq();
+                if(showFail){
+                    console.log(JSON.stringify(validateAuthorityResult.failures));
+                }
+                await continueInq();
+            } else {
+                // succesfully validated all the metadata accounts
+                console.log(`Successfully validated authority of ${validateAuthorityResult.success.length} metadata accounts`);
+                await continueInq();
+            }
+        }
+
+        console.log('');
+        let continueProcessing = false;
+        let buckets: PublicKey[][] = [];
+        if (!error) {
+            buckets = await prepareBulkUpdate(mintList);
+            const {confirm} = await nftUpdateAuthorityConfirmInq(newAuthority.toBase58(), mintList.length, buckets.length);
+            if (confirm) {
+                continueProcessing = true;
+            }
+        }
+        if (continueProcessing) {
+            const {safeSign} = await nftSafeSigningInq();
+            const successfullyStagedMetas: PublicKey[] = [];
+            console.log("Creating the multisig transactions, this may take some time depending on the number of mints and your internet connection speed.");
+            const status = new Spinner("Initializing metadata authority update multisig transactions...");
+            status.start();
+            for(const batch of buckets){
+                const metasAdded = await createAuthorityUpdateTx(this.api.squads, ms.publicKey, vault, newAuthority, batch, this.api.connection);
+                successfullyStagedMetas.push(...metasAdded.attached);
+
+                // send the txmeta if we have a valid tx metadata program
+                try {
+                    const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
+                    const txMetaTx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.wallet.publicKey});
+                    const txMetaIx = await sendTxMetaIx(ms.publicKey, metasAdded.txPDA, this.wallet.publicKey, {type: 'nftAuthorityUpdate'}, new PublicKey(TXMETA_PROGRAM_ID));
+                    txMetaTx.add(txMetaIx);
+                    const signed = await this.wallet.signTransaction(txMetaTx);
+                    const txid = await this.api.connection.sendRawTransaction(signed.serialize());
+                    await this.api.connection.confirmTransaction(txid, "processed");
+                }catch(e){
+                    console.log(e);
+                }
+            }
+            status.stop();
+            console.log(`Successfully initiated authority transfer txs for ${successfullyStagedMetas.length} metadata accounts`);
+            await continueInq();
+        }
+        this.nfts(ms);
+    };
 };
 
 export default Menu;

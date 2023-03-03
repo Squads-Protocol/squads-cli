@@ -99,7 +99,7 @@ var API = /** @class */ (function () {
                         return [4 /*yield*/, this.wallet.signTransaction(fundTx)];
                     case 5:
                         signedTx = _b.sent();
-                        return [4 /*yield*/, this.connection.sendRawTransaction(signedTx.serialize(), { preflightCommitment: "confirmed", skipPreflight: true, commitment: "confirmed" })];
+                        return [4 /*yield*/, this.connection.sendRawTransaction(signedTx.serialize(), { preflightCommitment: "confirmed", skipPreflight: true })];
                     case 6:
                         sig = _b.sent();
                         return [4 /*yield*/, this.connection.confirmTransaction(sig, "confirmed")];
@@ -167,7 +167,7 @@ var API = /** @class */ (function () {
                         return [4 /*yield*/, this.connection.sendRawTransaction(tx.serialize(), { skipPreflight: true })];
                     case 10:
                         sig = _b.sent();
-                        return [4 /*yield*/, this.connection.confirmTransaction(sig, { commitment: "confirmed" })];
+                        return [4 /*yield*/, this.connection.confirmTransaction(sig, "confirmed")];
                     case 11:
                         _b.sent();
                         console.log("Transaction sent");
@@ -221,7 +221,7 @@ var API = /** @class */ (function () {
                         return [4 /*yield*/, this.connection.sendRawTransaction(tx.serialize(), { skipPreflight: true })];
                     case 8:
                         sig = _c.sent();
-                        return [4 /*yield*/, this.connection.confirmTransaction(sig, { commitment: "confirmed" })];
+                        return [4 /*yield*/, this.connection.confirmTransaction(sig, "confirmed")];
                     case 9:
                         _c.sent();
                         return [4 /*yield*/, this.squads.approveTransaction(txPDA)];
@@ -260,7 +260,7 @@ var API = /** @class */ (function () {
                         return [4 /*yield*/, this.connection.sendRawTransaction(tx.serialize(), { skipPreflight: true })];
                     case 7:
                         sig = _c.sent();
-                        return [4 /*yield*/, this.connection.confirmTransaction(sig, { commitment: "confirmed" })];
+                        return [4 /*yield*/, this.connection.confirmTransaction(sig, "confirmed")];
                     case 8:
                         _c.sent();
                         return [4 /*yield*/, this.squads.approveTransaction(txPDA)];
@@ -299,7 +299,7 @@ var API = /** @class */ (function () {
                         return [4 /*yield*/, this.connection.sendRawTransaction(tx.serialize(), { skipPreflight: true })];
                     case 7:
                         sig = _c.sent();
-                        return [4 /*yield*/, this.connection.confirmTransaction(sig, { commitment: "confirmed" })];
+                        return [4 /*yield*/, this.connection.confirmTransaction(sig, "confirmed")];
                     case 8:
                         _c.sent();
                         return [4 /*yield*/, this.squads.approveTransaction(txPDA)];

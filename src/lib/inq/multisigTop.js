@@ -13,6 +13,7 @@ export default (multisig) => {
                 "Settings",
                 "Create new ATA",
                 "Program Authority Transfer",
+                "Bulk NFT Operations",
                 "<- Go back"
             ],
         }
