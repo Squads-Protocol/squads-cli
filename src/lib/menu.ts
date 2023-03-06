@@ -54,15 +54,17 @@ const Progress = CLI.Progress;
 class Menu{
     programId: PublicKey;
     programManagerId: PublicKey;
+    txMetaProgramId: PublicKey;
     multisigs: any[] = [];
     wallet;
     api;
     connection;
-    constructor(wallet: any, connection: any, programId?: string, programManagerId?: string) {
+    constructor(wallet: any, connection: any, programId?: string, programManagerId?: string, txMetaProgramId?: string) {
         this.wallet = wallet.wallet;
         this.connection = connection;
         this.programId = programId ? new PublicKey(programId) : DEFAULT_MULTISIG_PROGRAM_ID;
         this.programManagerId = programManagerId ? new PublicKey(programManagerId) : DEFAULT_PROGRAM_MANAGER_PROGRAM_ID;
+        this.txMetaProgramId = txMetaProgramId ? new PublicKey(txMetaProgramId) : new PublicKey(TXMETA_PROGRAM_ID);
         this.api = new API(wallet.wallet, connection, this.programId, this.programManagerId);
         this.top();
     }
@@ -870,7 +872,7 @@ class Menu{
                 try {
                     const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
                     const txMetaTx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.wallet.publicKey});
-                    const txMetaIx = await sendTxMetaIx(ms.publicKey, metasAdded.txPDA, this.wallet.publicKey, {type: 'nftAuthorityUpdate'}, new PublicKey(TXMETA_PROGRAM_ID));
+                    const txMetaIx = await sendTxMetaIx(ms.publicKey, metasAdded.txPDA, this.wallet.publicKey, {type: 'nftAuthorityUpdate'}, this.txMetaProgramId);
                     txMetaTx.add(txMetaIx);
                     const signed = await this.wallet.signTransaction(txMetaTx);
                     const txid = await this.api.connection.sendRawTransaction(signed.serialize());
@@ -900,7 +902,7 @@ class Menu{
             error = true;
         }
 
-        let checkAuthority: PublicKey = new PublicKey(publicKey);
+        let checkAuthority: PublicKey = vault;
         if (type === 1) {
             if(publicKey && publicKey.length > 0) {
                 checkAuthority = new PublicKey(publicKey);

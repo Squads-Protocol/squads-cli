@@ -16,6 +16,7 @@ var argv = (0, yargs_1.default)((0, helpers_1.hideBin)(process.argv)).options({
     cluster: { type: 'string' },
     programId: { type: 'string' },
     programManagerId: { type: 'string' },
+    txMetaProgramId: { type: 'string' },
 }).parseSync();
 // console.log(pjson.version);
 var load = function (initCluster, programId, programManagerId) { return tslib_1.__awaiter(void 0, void 0, void 0, function () {
@@ -56,6 +57,7 @@ var help = function () { return tslib_1.__awaiter(void 0, void 0, void 0, functi
 var cluster;
 var programId;
 var programManagerId;
+var txMetaProgramId;
 if (argv.cluster && argv.cluster.length > 0) {
     cluster = argv.cluster;
 }
@@ -64,6 +66,9 @@ if (argv.programId && argv.programId.length > 0) {
 }
 if (argv.programManagerId && argv.programManagerId.length > 0) {
     programManagerId = argv.programManagerId;
+}
+if (argv.txMetaProgramId && argv.txMetaProgramId.length > 0) {
+    txMetaProgramId = argv.txMetaProgramId;
 }
 if (argv.help) {
     help();

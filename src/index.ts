@@ -16,6 +16,7 @@ const argv = yargs(hideBin(process.argv)).options({
     cluster: { type: 'string'},
     programId: { type: 'string'},
     programManagerId: { type: 'string'},
+    txMetaProgramId: { type: 'string'},
   }).parseSync();
 
 // console.log(pjson.version);
@@ -45,6 +46,7 @@ const help = async () => {
 let cluster;
 let programId;
 let programManagerId;
+let txMetaProgramId;
 if (argv.cluster && argv.cluster.length > 0){
     cluster = argv.cluster;
 }
@@ -53,6 +55,9 @@ if (argv.programId && argv.programId.length > 0){
 }
 if (argv.programManagerId && argv.programManagerId.length > 0){
     programManagerId = argv.programManagerId;
+}
+if (argv.txMetaProgramId && argv.txMetaProgramId.length > 0) {
+    txMetaProgramId = argv.txMetaProgramId;
 }
 
 if (argv.help){

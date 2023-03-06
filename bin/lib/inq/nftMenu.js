@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.nftSafeSigningInq = exports.nftValidateOwnerInq = exports.nftUpdateShowFailedMetasInq = exports.nftUpdateShowFailedMintsInq = exports.nftUpdateAuthorityConfirmIncomingInq = exports.nftUpdateAuthorityConfirmInq = exports.nftValidateMetasInq = exports.nftUpdateAuthorityInq = exports.nftMainInq = void 0;
+exports.nftValidateCurrentAuthorityInq = exports.nftSafeSigningInq = exports.nftValidateOwnerInq = exports.nftUpdateShowFailedMetasInq = exports.nftUpdateShowFailedMintsInq = exports.nftUpdateAuthorityConfirmIncomingInq = exports.nftUpdateAuthorityConfirmInq = exports.nftValidateMetasInq = exports.nftUpdateAuthorityInq = exports.nftMainInq = void 0;
 var tslib_1 = require("tslib");
 var inquirer_1 = tslib_1.__importDefault(require("inquirer"));
 var nftMainInq = function () {
@@ -10,7 +10,8 @@ var nftMainInq = function () {
             name: 'action',
             message: 'What would you like to do?',
             choices: [
-                "Update Authority Change",
+                { name: "Update Authority Change", value: 0 },
+                { name: "Validate Metadata Accounts", value: 1 },
                 "Back",
             ],
         }
@@ -133,4 +134,42 @@ var nftSafeSigningInq = function () {
     return inquirer_1.default.prompt(questions);
 };
 exports.nftSafeSigningInq = nftSafeSigningInq;
+var nftValidateCurrentAuthorityInq = function (vault) {
+    var questions = [
+        {
+            type: 'input',
+            name: 'mintList',
+            message: 'Enter the location of the mint list file (.json)',
+        },
+        {
+            type: 'list',
+            name: 'type',
+            message: 'Who is the current authorities for the metadata accounts?',
+            choices: [
+                { name: "Squad Vault (".concat(vault.toBase58(), ")"), value: 0 },
+                { name: "A different address", value: 1 },
+            ],
+        },
+        {
+            when: function (answers) { return answers.type === 1; },
+            validate: function (answers) {
+                if (!answers.publicKey || answers.publicKey.length < 0) {
+                    return true;
+                }
+                try {
+                    new PublicKey(answers.publicKey);
+                    return true;
+                }
+                catch (e) {
+                    return false;
+                }
+            },
+            type: 'input',
+            name: 'publicKey',
+            message: 'Enter the current authority address (base58)',
+        },
+    ];
+    return inquirer_1.default.prompt(questions);
+};
+exports.nftValidateCurrentAuthorityInq = nftValidateCurrentAuthorityInq;
 //# sourceMappingURL=nftMenu.js.map

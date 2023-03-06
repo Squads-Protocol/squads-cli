@@ -20,7 +20,7 @@ var metadataInstructions_js_1 = require("./metadataInstructions.js");
 var Spinner = clui_1.default.Spinner;
 var Progress = clui_1.default.Progress;
 var Menu = /** @class */ (function () {
-    function Menu(wallet, connection, programId, programManagerId) {
+    function Menu(wallet, connection, programId, programManagerId, txMetaProgramId) {
         var _this = this;
         this.multisigs = [];
         this.header = function (vault) { return tslib_1.__awaiter(_this, void 0, void 0, function () {
@@ -1016,8 +1016,11 @@ var Menu = /** @class */ (function () {
                         return [4 /*yield*/, (0, index_js_1.nftMainInq)()];
                     case 2:
                         action = (_a.sent()).action;
-                        if (action === "Update Authority Change") {
+                        if (action === 0) {
                             this.nftAuthorityChange(ms);
+                        }
+                        else if (action === 1) {
+                            this.nftValidateMetaAuthorities(ms);
                         }
                         else {
                             this.multisig(ms);
@@ -1319,10 +1322,81 @@ var Menu = /** @class */ (function () {
                 }
             });
         }); };
+        this.nftValidateMetaAuthorities = function (ms) { return tslib_1.__awaiter(_this, void 0, void 0, function () {
+            var vault, error, _a, mintList, type, publicKey, allMints, e_16, checkAuthority, status_20, validateAuthorityResult, showFail;
+            return tslib_1.__generator(this, function (_b) {
+                switch (_b.label) {
+                    case 0:
+                        (0, clear_1.default)();
+                        return [4 /*yield*/, (0, sdk_1.getAuthorityPDA)(ms.publicKey, new bn_js_1.default(1), this.api.programId)];
+                    case 1:
+                        vault = (_b.sent())[0];
+                        this.header(vault);
+                        error = false;
+                        return [4 /*yield*/, (0, index_js_1.nftValidateCurrentAuthorityInq)(vault)];
+                    case 2:
+                        _a = _b.sent(), mintList = _a.mintList, type = _a.type, publicKey = _a.publicKey;
+                        allMints = [];
+                        _b.label = 3;
+                    case 3:
+                        _b.trys.push([3, 5, , 6]);
+                        return [4 /*yield*/, (0, nfts_js_1.loadNFTMints)(mintList)];
+                    case 4:
+                        allMints = _b.sent();
+                        return [3 /*break*/, 6];
+                    case 5:
+                        e_16 = _b.sent();
+                        console.log("There was an error loading the mint list file: " + chalk_1.default.red(e_16));
+                        error = true;
+                        return [3 /*break*/, 6];
+                    case 6:
+                        checkAuthority = vault;
+                        if (type === 1) {
+                            if (publicKey && publicKey.length > 0) {
+                                checkAuthority = new web3_js_1.PublicKey(publicKey);
+                            }
+                            else {
+                                error = true;
+                            }
+                        }
+                        if (!!error) return [3 /*break*/, 12];
+                        status_20 = new Spinner("Checking that the metadata accounts are valid and currently owned by ".concat(checkAuthority, "..."));
+                        status_20.start();
+                        return [4 /*yield*/, (0, nfts_js_1.checkAllMetasAuthority)(this.api.connection, allMints.map(function (m) { return (0, nfts_js_1.getMetadataAccount)(m); }), checkAuthority)];
+                    case 7:
+                        validateAuthorityResult = _b.sent();
+                        status_20.stop();
+                        if (!(validateAuthorityResult.failures.length > 0)) return [3 /*break*/, 10];
+                        console.log(chalk_1.default.red("There were some errors validating authority ".concat(validateAuthorityResult.failures.length, " metadata accounts:")));
+                        error = true;
+                        return [4 /*yield*/, (0, index_js_1.nftUpdateShowFailedMetasInq)()];
+                    case 8:
+                        showFail = (_b.sent()).showFail;
+                        if (showFail) {
+                            console.log(JSON.stringify(validateAuthorityResult.failures));
+                        }
+                        return [4 /*yield*/, (0, index_js_1.continueInq)()];
+                    case 9:
+                        _b.sent();
+                        return [3 /*break*/, 12];
+                    case 10:
+                        // succesfully validated all the metadata accounts
+                        console.log("Successfully validated authority of ".concat(validateAuthorityResult.success.length, " metadata accounts"));
+                        return [4 /*yield*/, (0, index_js_1.continueInq)()];
+                    case 11:
+                        _b.sent();
+                        _b.label = 12;
+                    case 12:
+                        this.nfts(ms);
+                        return [2 /*return*/];
+                }
+            });
+        }); };
         this.wallet = wallet.wallet;
         this.connection = connection;
         this.programId = programId ? new web3_js_1.PublicKey(programId) : sdk_1.DEFAULT_MULTISIG_PROGRAM_ID;
         this.programManagerId = programManagerId ? new web3_js_1.PublicKey(programManagerId) : sdk_1.DEFAULT_PROGRAM_MANAGER_PROGRAM_ID;
+        this.txMetaProgramId = txMetaProgramId ? new web3_js_1.PublicKey(txMetaProgramId) : new web3_js_1.PublicKey(constants_js_1.TXMETA_PROGRAM_ID);
         this.api = new api_js_1.default(wallet.wallet, connection, this.programId, this.programManagerId);
         this.top();
     }
