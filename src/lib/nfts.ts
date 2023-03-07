@@ -173,15 +173,19 @@ export const getOldNFTAccounts = async (connection: Connection, publicKey: Publi
         })
 };
 
+type BatchTransactionCreationError = 'approval' | 'activation' | null;
 // can fit 250 ixes
-export const createAuthorityUpdateTx = async (squadsSdk: Squads, multisig: PublicKey, currentAuthority: PublicKey, newAuthority: PublicKey, metadataAccounts: PublicKey[], connection: Connection, safeSign?: boolean) => {
+export const createAuthorityUpdateTx = async (squadsSdk: Squads, multisig: PublicKey, currentAuthority: PublicKey, newAuthority: PublicKey, metadataAccounts: PublicKey[], connection: Connection, ws: fs.WriteStream, safeSign?: boolean) => {
     // create the transaction to update the authority
     // attach the update authority ix to the transaction (up to 250)
     const attached = [];
     const attachFails = [];
+    let txError: BatchTransactionCreationError = null;
     const queue = metadataAccounts;
     let txState = await squadsSdk.createTransaction(multisig, 1);
+    ws.write(`Created Transaction at PDA: ${txState.publicKey.toBase58()}\n`);
     const batchLength = metadataAccounts.length;
+    ws.write(`Attaching ${batchLength} instructions for each metadata account\n`);
     let hasError = false;
     const failures = [];
     while (queue.length > 0) {
@@ -200,6 +204,7 @@ export const createAuthorityUpdateTx = async (squadsSdk: Squads, multisig: Publi
         try {
             const addedIx = await squadsSdk.addInstruction(txState.publicKey, ix);
             if (addedIx) {
+                ws.write(`${metadataAccount.toBase58()}\n`);
                 attached.push(metadataAccount);
             }
         }catch (e) {
@@ -210,6 +215,7 @@ export const createAuthorityUpdateTx = async (squadsSdk: Squads, multisig: Publi
     txState = await squadsSdk.getTransaction(txState.publicKey);
     // if the transaction is not full and there are still items to attach, then add them
     if (txState.instructionIndex !== batchLength && attachFails.length > 0) {
+        ws.write(`There were issues attaching some of the instructions, trying to attach them to tx ${txState.publicKey.toBase58()}\n`);
         while (attachFails.length > 0) {
             const metadataAccount = attachFails.shift();
             if (!metadataAccount) {
@@ -219,20 +225,35 @@ export const createAuthorityUpdateTx = async (squadsSdk: Squads, multisig: Publi
             try {
                 const addedIx = await squadsSdk.addInstruction(txState.publicKey, ix);
                 if (addedIx) {
+                    ws.write(`${metadataAccount.toBase58()}\n`);
                     attached.push(metadataAccount);
                 }
             }catch (e) {
                 hasError = true;
+                ws.write(`Failed to attach ix for metadata account ${metadataAccount.toBase58()}\n`);
                 failures.push(metadataAccount);
             }
         }
     }
     // activate the transaction
-    await squadsSdk.activateTransaction(txState.publicKey);
-    // approve the transaction 
-    await squadsSdk.approveTransaction(txState.publicKey);
-    
-    return { attached, failures, txPDA: txState.publicKey };
+    try {
+        await squadsSdk.activateTransaction(txState.publicKey);
+        ws.write(`Successfully activated tx ${txState.publicKey.toBase58()}\n`);
+
+        // approve the transaction 
+        try {
+            await squadsSdk.approveTransaction(txState.publicKey);
+            ws.write(`Successfully voted to approved tx ${txState.publicKey.toBase58()}\n`);
+        }catch(e){
+            ws.write(`Failed to cast vote approval for tx ${txState.publicKey.toBase58()}\n`);
+            txError = 'approval';
+        }
+    }catch(e){
+        ws.write(`Failed to activate tx ${txState.publicKey.toBase58()}\n`);
+        txError = 'activation';
+    }
+
+    return { attached, failures, txPDA: txState.publicKey, txError };
 };
 
 // this loads the json file which contains an array of mint addresses in base58,

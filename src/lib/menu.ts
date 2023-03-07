@@ -5,6 +5,7 @@ import inquirer from 'inquirer';
 import * as anchor from "@coral-xyz/anchor";
 import CLI from "clui";
 import "console.table";
+import * as fs from 'fs';
 
 import { getAuthorityPDA, DEFAULT_MULTISIG_PROGRAM_ID, DEFAULT_PROGRAM_MANAGER_PROGRAM_ID } from '@sqds/sdk';
 import { TXMETA_PROGRAM_ID } from './constants.js';
@@ -864,25 +865,33 @@ class Menu{
             console.log("Creating the multisig transactions, this may take some time depending on the number of mints and your internet connection speed.");
             const status = new Spinner("Initializing metadata authority update multisig transactions...");
             status.start();
+            const logFilename = __dirname + `../authority-out-${Date.now()}.txt`;
+            const transferOutWriteStream = fs.createWriteStream(logFilename, "utf8");
+            transferOutWriteStream.write("Initiating bulk outgoing authority change transactions\n");
             for(const batch of buckets){
-                const metasAdded = await createAuthorityUpdateTx(this.api.squads, ms.publicKey, vault, newAuthority, batch, this.api.connection);
+                const metasAdded = await createAuthorityUpdateTx(this.api.squads, ms.publicKey, vault, newAuthority, batch, this.api.connection, transferOutWriteStream);
                 successfullyStagedMetas.push(...metasAdded.attached);
 
-                // send the txmeta if we have a valid tx metadata program
-                try {
-                    const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
-                    const txMetaTx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.wallet.publicKey});
-                    const txMetaIx = await sendTxMetaIx(ms.publicKey, metasAdded.txPDA, this.wallet.publicKey, {type: 'nftAuthorityUpdate'}, this.txMetaProgramId);
-                    txMetaTx.add(txMetaIx);
-                    const signed = await this.wallet.signTransaction(txMetaTx);
-                    const txid = await this.api.connection.sendRawTransaction(signed.serialize());
-                    await this.api.connection.confirmTransaction(txid, "processed");
-                }catch(e){
-                    console.log(e);
+                // if we haven't had an activation error, activate it
+                if (metasAdded.txError !== 'activation') {
+                    // send the txmeta if we have a valid tx metadata program
+                    try {
+                        const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
+                        const txMetaTx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.wallet.publicKey});
+                        const txMetaIx = await sendTxMetaIx(ms.publicKey, metasAdded.txPDA, this.wallet.publicKey, {type: 'nftAuthorityUpdate'}, this.txMetaProgramId);
+                        txMetaTx.add(txMetaIx);
+                        const signed = await this.wallet.signTransaction(txMetaTx);
+                        const txid = await this.api.connection.sendRawTransaction(signed.serialize());
+                        await this.api.connection.confirmTransaction(txid, "processed");
+                    }catch(e){
+                        console.log(e);
+                    }
                 }
             }
+            transferOutWriteStream.close();
             status.stop();
-            console.log(`Successfully initiated authority transfer txs for ${successfullyStagedMetas.length} metadata accounts`);
+            console.log(`Finished staging authority transfer txs for ${successfullyStagedMetas.length} metadata accounts`);
+            console.log(`Output logs written to: ${logFilename}`);
             await continueInq();
         }
         this.nfts(ms);
