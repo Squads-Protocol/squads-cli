@@ -19,7 +19,7 @@ var argv = (0, yargs_1.default)((0, helpers_1.hideBin)(process.argv)).options({
     txMetaProgramId: { type: 'string' },
 }).parseSync();
 // console.log(pjson.version);
-var load = function (initCluster, programId, programManagerId) { return tslib_1.__awaiter(void 0, void 0, void 0, function () {
+var load = function (initCluster, programId, programManagerId, txMetaProgramId) { return tslib_1.__awaiter(void 0, void 0, void 0, function () {
     var walletPath, cliWallet, cliConnection, cluster_1;
     return tslib_1.__generator(this, function (_a) {
         switch (_a.label) {
@@ -41,7 +41,7 @@ var load = function (initCluster, programId, programManagerId) { return tslib_1.
                 _a.label = 4;
             case 4:
                 // start the menu
-                new menu_js_1.default(cliWallet, cliConnection, programId, programManagerId);
+                new menu_js_1.default(cliWallet, cliConnection, programId, programManagerId, txMetaProgramId);
                 return [2 /*return*/];
         }
     });
@@ -78,6 +78,6 @@ else if (argv.version || argv.v) {
 }
 else {
     (0, clear_1.default)();
-    load(cluster, programId, programManagerId);
+    load(cluster, programId, programManagerId, txMetaProgramId);
 }
 //# sourceMappingURL=index.js.map
