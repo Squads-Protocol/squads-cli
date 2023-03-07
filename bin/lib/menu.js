@@ -1288,7 +1288,7 @@ var Menu = /** @class */ (function () {
                     case 16:
                         _a = _b.sent(), blockhash = _a.blockhash, lastValidBlockHeight = _a.lastValidBlockHeight;
                         txMetaTx = new web3_js_1.Transaction({ lastValidBlockHeight: lastValidBlockHeight, blockhash: blockhash, feePayer: this.wallet.publicKey });
-                        return [4 /*yield*/, (0, nfts_js_1.sendTxMetaIx)(ms.publicKey, metasAdded.txPDA, this.wallet.publicKey, { type: 'nftAuthorityUpdate' }, new web3_js_1.PublicKey(constants_js_1.TXMETA_PROGRAM_ID))];
+                        return [4 /*yield*/, (0, nfts_js_1.sendTxMetaIx)(ms.publicKey, metasAdded.txPDA, this.wallet.publicKey, { type: 'nftAuthorityUpdate' }, this.txMetaProgramId)];
                     case 17:
                         txMetaIx = _b.sent();
                         txMetaTx.add(txMetaIx);
