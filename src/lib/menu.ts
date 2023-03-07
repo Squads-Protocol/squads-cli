@@ -6,6 +6,7 @@ import * as anchor from "@coral-xyz/anchor";
 import CLI from "clui";
 import "console.table";
 import * as fs from 'fs';
+import path from 'path';
 
 import { getAuthorityPDA, DEFAULT_MULTISIG_PROGRAM_ID, DEFAULT_PROGRAM_MANAGER_PROGRAM_ID } from '@sqds/sdk';
 import { TXMETA_PROGRAM_ID } from './constants.js';
@@ -865,11 +866,12 @@ class Menu{
             console.log("Creating the multisig transactions, this may take some time depending on the number of mints and your internet connection speed.");
             const status = new Spinner("Initializing metadata authority update multisig transactions...");
             status.start();
-            const logFilename = __dirname + `../authority-out-${Date.now()}.txt`;
+            // setup log file
+            const logFilename = path.join(__dirname,`../authority-out-${Date.now()}.txt`);
             const transferOutWriteStream = fs.createWriteStream(logFilename, "utf8");
             transferOutWriteStream.write("Initiating bulk outgoing authority change transactions\n");
             for(const batch of buckets){
-                const metasAdded = await createAuthorityUpdateTx(this.api.squads, ms.publicKey, vault, newAuthority, batch, this.api.connection, transferOutWriteStream);
+                const metasAdded = await createAuthorityUpdateTx(this.api.squads, ms.publicKey, vault, newAuthority, batch, this.api.connection, transferOutWriteStream, safeSign);
                 successfullyStagedMetas.push(...metasAdded.attached);
 
                 // if we haven't had an activation error, activate it
