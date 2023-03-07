@@ -20,7 +20,7 @@ const argv = yargs(hideBin(process.argv)).options({
   }).parseSync();
 
 // console.log(pjson.version);
-const load = async (initCluster?: string, programId?: string, programManagerId?: string) => {
+const load = async (initCluster?: string, programId?: string, programManagerId?: string, txMetaProgramId?: string) => {
     clear();
     console.log(chalk.yellow('Starting Squads CLI...') + " Follow the prompts to get started")
     const {walletPath} = await SetupWallet();
@@ -34,7 +34,7 @@ const load = async (initCluster?: string, programId?: string, programManagerId?:
     }
 
     // start the menu
-    new Menu(cliWallet, cliConnection, programId, programManagerId);
+    new Menu(cliWallet, cliConnection, programId, programManagerId, txMetaProgramId);
 };
 
 const help = async () => {
@@ -66,5 +66,5 @@ if (argv.help){
     console.log(VERSION);
 }else {
     clear();
-    load(cluster, programId, programManagerId);
+    load(cluster, programId, programManagerId, txMetaProgramId);
 }
