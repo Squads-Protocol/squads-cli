@@ -16,10 +16,11 @@ const argv = yargs(hideBin(process.argv)).options({
     cluster: { type: 'string'},
     programId: { type: 'string'},
     programManagerId: { type: 'string'},
+    txMetaProgramId: { type: 'string'},
   }).parseSync();
 
 // console.log(pjson.version);
-const load = async (initCluster?: string, programId?: string, programManagerId?: string) => {
+const load = async (initCluster?: string, programId?: string, programManagerId?: string, txMetaProgramId?: string) => {
     clear();
     console.log(chalk.yellow('Starting Squads CLI...') + " Follow the prompts to get started")
     const {walletPath} = await SetupWallet();
@@ -33,7 +34,7 @@ const load = async (initCluster?: string, programId?: string, programManagerId?:
     }
 
     // start the menu
-    new Menu(cliWallet, cliConnection, programId, programManagerId);
+    new Menu(cliWallet, cliConnection, programId, programManagerId, txMetaProgramId);
 };
 
 const help = async () => {
@@ -45,6 +46,7 @@ const help = async () => {
 let cluster;
 let programId;
 let programManagerId;
+let txMetaProgramId;
 if (argv.cluster && argv.cluster.length > 0){
     cluster = argv.cluster;
 }
@@ -54,6 +56,9 @@ if (argv.programId && argv.programId.length > 0){
 if (argv.programManagerId && argv.programManagerId.length > 0){
     programManagerId = argv.programManagerId;
 }
+if (argv.txMetaProgramId && argv.txMetaProgramId.length > 0) {
+    txMetaProgramId = argv.txMetaProgramId;
+}
 
 if (argv.help){
     help();
@@ -61,5 +66,5 @@ if (argv.help){
     console.log(VERSION);
 }else {
     clear();
-    load(cluster, programId, programManagerId);
+    load(cluster, programId, programManagerId, txMetaProgramId);
 }

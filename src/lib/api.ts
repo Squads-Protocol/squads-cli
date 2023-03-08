@@ -14,7 +14,7 @@ import { Connection, PublicKey } from "@solana/web3.js";
 class API{
     squads;
     wallet;
-    connection;
+    connection: Connection;
     cluster;
     programId: PublicKey;
     program;
@@ -80,7 +80,7 @@ class API{
             });
             fundTx.add(fundIx);
             const signedTx = await this.wallet.signTransaction(fundTx);
-            const sig =await this.connection.sendRawTransaction(signedTx.serialize(), {preflightCommitment: "confirmed",skipPreflight: true, commitment: "confirmed"});
+            const sig =await this.connection.sendRawTransaction(signedTx.serialize(), {preflightCommitment: "confirmed",skipPreflight: true});
             await this.connection.confirmTransaction(sig, "confirmed");
         }catch (e){
             console.log("Error funding vault", e);
@@ -116,7 +116,7 @@ class API{
         console.log("Transaction signed")
         console.log("Sending");
         const sig = await this.connection.sendRawTransaction(tx.serialize(), {skipPreflight: true});
-        await this.connection.confirmTransaction(sig, {commitment: "confirmed"});
+        await this.connection.confirmTransaction(sig, "confirmed");
         console.log("Transaction sent");
         return txPDA;
     };
@@ -125,6 +125,10 @@ class API{
         return this.squads.executeTransaction(tx);
     };
     
+    executeInstruction = async (tx: PublicKey, ix: PublicKey) => {
+        return this.squads.executeInstruction(tx, ix);
+    };
+
     approveTransaction = async (tx: PublicKey) => {
         return this.squads.approveTransaction(tx);
     }
@@ -150,7 +154,7 @@ class API{
         console.log("Transaction signed")
         console.log("Sending");
         const sig = await this.connection.sendRawTransaction(tx.serialize(), {skipPreflight: true});
-        await this.connection.confirmTransaction(sig, {commitment: "confirmed"});
+        await this.connection.confirmTransaction(sig, "confirmed");
     
         await this.squads.approveTransaction(txPDA);
         return this.squads.getTransaction(txPDA);
@@ -174,7 +178,7 @@ class API{
         console.log("Transaction signed")
         console.log("Sending");
         const sig = await this.connection.sendRawTransaction(tx.serialize(), {skipPreflight: true});
-        await this.connection.confirmTransaction(sig, {commitment: "confirmed"});
+        await this.connection.confirmTransaction(sig, "confirmed");
     
         await this.squads.approveTransaction(txPDA);
         return this.squads.getTransaction(txPDA);
@@ -198,7 +202,7 @@ class API{
         console.log("Transaction signed")
         console.log("Sending");
         const sig = await this.connection.sendRawTransaction(tx.serialize(), {skipPreflight: true});
-        await this.connection.confirmTransaction(sig, {commitment: "confirmed"});
+        await this.connection.confirmTransaction(sig, "confirmed");
     
         await this.squads.approveTransaction(txPDA);
         return this.squads.getTransaction(txPDA);
