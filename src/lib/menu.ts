@@ -8,7 +8,7 @@ import "console.table";
 import * as fs from 'fs';
 import path from 'path';
 
-import { getAuthorityPDA, DEFAULT_MULTISIG_PROGRAM_ID, DEFAULT_PROGRAM_MANAGER_PROGRAM_ID } from '@sqds/sdk';
+import { getAuthorityPDA, DEFAULT_MULTISIG_PROGRAM_ID, DEFAULT_PROGRAM_MANAGER_PROGRAM_ID, getIxPDA } from '@sqds/sdk';
 import { TXMETA_PROGRAM_ID } from './constants.js';
 import BN from 'bn.js';
 import { PublicKey, Transaction } from '@solana/web3.js';
@@ -49,6 +49,7 @@ import { shortenTextEnd } from './utils.js';
 import { checkAllMetas, checkAllMetasAuthority, createAuthorityUpdateTx, getMetadataAccount, loadNFTMints, prepareBulkUpdate, sendTxMetaIx } from './nfts.js';
 import { boolean } from 'yargs';
 import { updateMetadataAuthorityIx } from './metadataInstructions.js';
+import { TransactionAccount } from '@sqds/sdk/lib/sdk/src/types.js';
 
 const Spinner = CLI.Spinner;
 const Progress = CLI.Progress;
@@ -330,10 +331,23 @@ class Menu{
             if (yes) {
                 const status = new Spinner("Executing transaction...");
                 status.start();
+                let successfullyExecuted = 0;
                 try {
-                    const updatedTx = await this.api.executeTransaction(tx.publicKey);
+                    if(tx.instructionIndex > 1) {
+                        for (let ixIndex = tx.executedIndex + 1; ixIndex < tx.instructionIndex; ixIndex++){
+                            console.log("execution index", tx.executedIndex);
+                            const [ixPDA] = await getIxPDA(tx.publicKey, new anchor.BN(ixIndex), this.api.programId);
+                            console.log("invoking instruction ", ixIndex);
+                            await this.api.executeInstruction(tx.publicKey, ixPDA);
+                            const ixState = await this.api.squads.getInstructions([ixPDA]);
+                            successfullyExecuted++;
+                        }
+                    } else {
+                        await this.api.executeTransaction(tx.publicKey);
+                    }
                     status.stop();
-                    const newInd = txs.findIndex(t => t.publicKey.toBase58() === updatedTx.publicKey.toBase58());
+                    const updatedTx = await this.api.getTransactions(tx.publicKey);
+                    const newInd = txs.findIndex(t => t.publicKey.toBase58() === tx.publicKey.toBase58());
                     txs.splice(newInd, 1, updatedTx);
                     console.log("Transaction executed");
                     const updatedMs = await this.api.squads.getMultisig(ms.publicKey);
@@ -341,9 +355,10 @@ class Menu{
                     this.transaction(updatedTx, updatedMs, txs);
                 }catch(e){
                     status.stop();
-                    console.log(JSON.stringify(e));
+                    console.log(`Executed ${successfullyExecuted} instructions`);
+                    const updatedTx = await this.api.getTransactions(tx.publicKey);
                     await continueInq();
-                    this.transaction(tx, ms, txs);
+                    this.transaction(updatedTx, ms, txs);
                 }                
 
             }else{
