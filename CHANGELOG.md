@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.2.6](https://github.com/Squads-Protocol/squads-cli/compare/v1.2.5...v1.2.6) (2023-03-08)
+
+
+### Bug Fixes
+
+* **bin:** added bin path ([dec2347](https://github.com/Squads-Protocol/squads-cli/commit/dec23474b4b962c16cd15dad260898c7d51bb819))
+* **refactor:** updated sdk dependency ([d026be7](https://github.com/Squads-Protocol/squads-cli/commit/d026be7a6527a07ebc8f7bdb94cc65a72c6f0e8d))
+* **token:** fixed token instruction ([a62343a](https://github.com/Squads-Protocol/squads-cli/commit/a62343a162d80dab067646b21a138fe17545740c))
+* **ts-update:** migrate to ts ([d445766](https://github.com/Squads-Protocol/squads-cli/commit/d44576648245908b1bc6d2986399dc1eaab3db34))
+* **updates:** added more types ([3365d53](https://github.com/Squads-Protocol/squads-cli/commit/3365d530d0185a4cc5dcd15d08adb4989086da11))
+
 ## [1.2.5](https://github.com/Squads-Protocol/squads-cli/compare/v1.2.4...v1.2.5) (2022-12-13)
 
 
