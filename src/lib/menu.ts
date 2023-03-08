@@ -41,6 +41,7 @@ import {
     nftUpdateShowFailedMetasInq,
     nftSafeSigningInq,
     nftValidateCurrentAuthorityInq,
+    nftUpdateTryFailuresInq,
 } from "./inq/index.js";
 
 import API from "./api.js";
@@ -332,21 +333,21 @@ class Menu{
                 const status = new Spinner("Executing transaction...");
                 status.start();
                 let successfullyExecuted = 0;
+                console.log(JSON.stringify(tx));
                 try {
-                    if(tx.instructionIndex > 1) {
-                        for (let ixIndex = tx.executedIndex + 1; ixIndex < tx.instructionIndex; ixIndex++){
-                            console.log("execution index", tx.executedIndex);
+                    if(tx.instructionIndex > 3) {
+                        for (let ixIndex = tx.executedIndex + 1; ixIndex <= tx.instructionIndex; ixIndex++){
                             const [ixPDA] = await getIxPDA(tx.publicKey, new anchor.BN(ixIndex), this.api.programId);
                             console.log("invoking instruction ", ixIndex);
                             await this.api.executeInstruction(tx.publicKey, ixPDA);
-                            const ixState = await this.api.squads.getInstructions([ixPDA]);
+                            const _txStateUpdate = await this.api.squads.getTransaction(tx.publicKey);
                             successfullyExecuted++;
                         }
                     } else {
                         await this.api.executeTransaction(tx.publicKey);
                     }
                     status.stop();
-                    const updatedTx = await this.api.getTransactions(tx.publicKey);
+                    const updatedTx = await this.api.squads.getTransaction(tx.publicKey);
                     const newInd = txs.findIndex(t => t.publicKey.toBase58() === tx.publicKey.toBase58());
                     txs.splice(newInd, 1, updatedTx);
                     console.log("Transaction executed");
@@ -356,13 +357,15 @@ class Menu{
                 }catch(e){
                     status.stop();
                     console.log(`Executed ${successfullyExecuted} instructions`);
-                    const updatedTx = await this.api.getTransactions(tx.publicKey);
+                    console.log(`Terminated remaining execution because of an error: ${JSON.stringify(e)}`);
+                    const updatedTx = await this.api.squads.getTransaction(tx.publicKey);
                     await continueInq();
                     this.transaction(updatedTx, ms, txs);
                 }                
 
             }else{
-                this.transaction(tx, ms, txs);
+                const updatedTx = await this.api.squads.getTransaction(tx.publicKey);
+                this.transaction(updatedTx, ms, txs);
             }
         }else if(action === "Add Instruction"){
             const ix = await addInstructionInq();
@@ -781,10 +784,10 @@ class Menu{
             // run validation
             const status = new Spinner("Checking derived metadata accounts...");
             status.start();
-            const validateResult = await checkAllMetas(this.api.connection, mintList.map(m => getMetadataAccount(m)));
+            const validateResult = await checkAllMetas(this.api.connection, mintList);
             status.stop();
             if (validateResult.failures.length > 0) {
-                console.log(chalk.red(`There were some errors validating ${validateResult.failures.length} metadata accounts:`));
+                console.log(chalk.red(`There were some errors validating ${validateResult.failures.length} metadata accounts for certain mints:`));
                 console.log(JSON.stringify(validateResult.failures));
                 error = true;
                 await continueInq();
@@ -831,6 +834,30 @@ class Menu{
                 if(showFail){
                     console.log(JSON.stringify(failedUpdates));
                 }
+                const {rerun} = await nftUpdateTryFailuresInq(failedUpdates.length);
+                if (rerun) {
+                    const secondPass = [];
+                    const secondPassFails = [];
+                    const status = new Spinner(`Updating authority of the ${failedUpdates.length} remaining metadata accounts...`);
+                    status.start();
+                    for (const mint of failedUpdates) {
+                        const mAccount = new PublicKey(mint);
+                        try {
+                            const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
+                            const updateTx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.api.wallet.publicKey});
+                            const updateIx = updateMetadataAuthorityIx(newAuthority, this.api.wallet.publicKey, mAccount);
+                            updateTx.add(updateIx);
+                            const signed = await this.api.wallet.signTransaction(updateTx);
+                            const txid = await this.api.connection.sendRawTransaction(signed.serialize());
+                            await this.api.connection.confirmTransaction(txid, "processed");
+                            secondPass.push(mint);
+                        }catch(e){
+                            secondPassFails.push(mint);
+                        }
+                    }
+                    status.stop();
+                    console.log(`Successfully transferred ${secondPass.length} more metadata accounts to the vault authority`);
+                }
             }
 
             await continueInq();
@@ -848,10 +875,10 @@ class Menu{
         if (ownerValidate) {
             const status = new Spinner("Checking that the metadata accounts are valid and currently owned by the multisig vault...");
             status.start();
-            const validateAuthorityResult = await checkAllMetasAuthority(this.api.connection, mintList.map(m => getMetadataAccount(m)), vault);
+            const validateAuthorityResult = await checkAllMetasAuthority(this.api.connection, mintList, vault);
             status.stop();
             if (validateAuthorityResult.failures.length > 0) {
-                console.log(chalk.red(`There were some errors validating authority ${validateAuthorityResult.failures.length} metadata accounts:`));
+                console.log(chalk.red(`There were some errors validating authority ${validateAuthorityResult.failures.length} metadata accounts for certaint mints:`));
                 error = true;
                 const {showFail} = await nftUpdateShowFailedMetasInq();
                 if(showFail){
@@ -890,7 +917,7 @@ class Menu{
                 successfullyStagedMetas.push(...metasAdded.attached);
 
                 // if we haven't had an activation error, activate it
-                if (metasAdded.txError !== 'activation') {
+                if (metasAdded.txError === 'none' || metasAdded.txError === 'approval') {
                     // send the txmeta if we have a valid tx metadata program
                     try {
                         const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
@@ -940,7 +967,7 @@ class Menu{
         if (!error) {
             const status = new Spinner(`Checking that the metadata accounts are valid and currently owned by ${checkAuthority}...`);
             status.start();
-            const validateAuthorityResult = await checkAllMetasAuthority(this.api.connection, allMints.map((m:PublicKey) => getMetadataAccount(m)), checkAuthority);
+            const validateAuthorityResult = await checkAllMetasAuthority(this.api.connection, allMints, checkAuthority);
             status.stop();
             if (validateAuthorityResult.failures.length > 0) {
                 console.log(chalk.red(`There were some errors validating authority ${validateAuthorityResult.failures.length} metadata accounts:`));

@@ -173,27 +173,27 @@ export const getOldNFTAccounts = async (connection: Connection, publicKey: Publi
         })
 };
 
-type BatchTransactionCreationError = 'approval' | 'activation' | null;
+type BatchTransactionCreationError = 'approval' | 'activation' | 'none';
 // can fit 250 ixes
-export const createAuthorityUpdateTx = async (squadsSdk: Squads, multisig: PublicKey, currentAuthority: PublicKey, newAuthority: PublicKey, metadataAccounts: PublicKey[], connection: Connection, ws: fs.WriteStream, safeSign?: boolean) => {
+export const createAuthorityUpdateTx = async (squadsSdk: Squads, multisig: PublicKey, currentAuthority: PublicKey, newAuthority: PublicKey, mints: PublicKey[], connection: Connection, ws: fs.WriteStream, safeSign?: boolean) => {
     // create the transaction to update the authority
     // attach the update authority ix to the transaction (up to 250)
     const attached = [];
     const attachFails = [];
-    let txError: BatchTransactionCreationError = null;
-    const queue = metadataAccounts;
+    let txError: BatchTransactionCreationError = 'none';
+    const queue = mints;
     let txState = await squadsSdk.createTransaction(multisig, 1);
     ws.write(`Created Transaction at PDA: ${txState.publicKey.toBase58()}\n`);
-    const batchLength = metadataAccounts.length;
+    const batchLength = mints.length;
     ws.write(`Attaching ${batchLength} instructions for each metadata account\n`);
     let hasError = false;
     const failures = [];
     while (queue.length > 0) {
-        const metadataAccount = queue.shift();
-        if (!metadataAccount) {
+        const mint = queue.shift();
+        if (!mint) {
             break;
         }
-        const ix = updateMetadataAuthorityIx(newAuthority, currentAuthority, metadataAccount);
+        const ix = updateMetadataAuthorityIx(newAuthority, currentAuthority, getMetadataAccount(mint));
         if (safeSign) {
             ix.keys.push({
                 pubkey: newAuthority,
@@ -204,11 +204,11 @@ export const createAuthorityUpdateTx = async (squadsSdk: Squads, multisig: Publi
         try {
             const addedIx = await squadsSdk.addInstruction(txState.publicKey, ix);
             if (addedIx) {
-                ws.write(`${metadataAccount.toBase58()}\n`);
-                attached.push(metadataAccount);
+                ws.write(`${mint.toBase58()}\n`);
+                attached.push(mint);
             }
         }catch (e) {
-            attachFails.push(metadataAccount);
+            attachFails.push(mint);
         }
     }
     // check the tx before activating
@@ -217,21 +217,21 @@ export const createAuthorityUpdateTx = async (squadsSdk: Squads, multisig: Publi
     if (txState.instructionIndex !== batchLength && attachFails.length > 0) {
         ws.write(`There were issues attaching some of the instructions, trying to attach them to tx ${txState.publicKey.toBase58()}\n`);
         while (attachFails.length > 0) {
-            const metadataAccount = attachFails.shift();
-            if (!metadataAccount) {
+            const mint = attachFails.shift();
+            if (!mint) {
                 break;
             }
-            const ix = updateMetadataAuthorityIx(newAuthority, currentAuthority, metadataAccount);
+            const ix = updateMetadataAuthorityIx(newAuthority, currentAuthority, getMetadataAccount(mint));
             try {
                 const addedIx = await squadsSdk.addInstruction(txState.publicKey, ix);
                 if (addedIx) {
-                    ws.write(`${metadataAccount.toBase58()}\n`);
-                    attached.push(metadataAccount);
+                    ws.write(`${mint.toBase58()}\n`);
+                    attached.push(mint);
                 }
             }catch (e) {
                 hasError = true;
-                ws.write(`Failed to attach ix for metadata account ${metadataAccount.toBase58()}\n`);
-                failures.push(metadataAccount);
+                ws.write(`Failed to attach ix for metadata account for mint: ${mint.toBase58()}\n`);
+                failures.push(mint);
             }
         }
     }
@@ -244,6 +244,7 @@ export const createAuthorityUpdateTx = async (squadsSdk: Squads, multisig: Publi
         try {
             await squadsSdk.approveTransaction(txState.publicKey);
             ws.write(`Successfully voted to approved tx ${txState.publicKey.toBase58()}\n`);
+            txError = 'none';
         }catch(e){
             ws.write(`Failed to cast vote approval for tx ${txState.publicKey.toBase58()}\n`);
             txError = 'approval';
@@ -251,6 +252,21 @@ export const createAuthorityUpdateTx = async (squadsSdk: Squads, multisig: Publi
     }catch(e){
         ws.write(`Failed to activate tx ${txState.publicKey.toBase58()}\n`);
         txError = 'activation';
+        ws.write(`Retrying tx activation for ${txState.publicKey.toBase58()}\n`);
+
+        // try one more time
+        await squadsSdk.activateTransaction(txState.publicKey);
+        ws.write(`Successfully activated tx ${txState.publicKey.toBase58()} on second attempt\n`);
+
+        // approve the transaction 
+        try {
+            await squadsSdk.approveTransaction(txState.publicKey);
+            ws.write(`Successfully voted to approved tx ${txState.publicKey.toBase58()}\n`);
+            txError = 'none';
+        }catch(e){
+            ws.write(`Failed to cast vote approval for tx ${txState.publicKey.toBase58()}\n`);
+            txError = 'approval';
+        }
     }
 
     return { attached, failures, txPDA: txState.publicKey, txError };
@@ -269,7 +285,7 @@ export const prepareBulkUpdate = async (mints: PublicKey[]) => {
             chunks.push(currentChunk);
             currentChunk = [];
         }
-        currentChunk.push(getMetadataAccount(mint));
+        currentChunk.push(mint);
     }
     if (currentChunk.length > 0) {
         chunks.push(currentChunk);
@@ -282,15 +298,15 @@ export const getMetadataAccount = (mint: PublicKey) => {
     return PublicKey.findProgramAddressSync([utils.bytes.utf8.encode('metadata'), METAPLEX_PROGRAM_ID.toBuffer(), mint.toBuffer()], METAPLEX_PROGRAM_ID)[0];
 };
 
-export const checkAllMetas = async (connection: Connection, metadataAccounts: PublicKey[]) => {
+export const checkAllMetas = async (connection: Connection, mints: PublicKey[]) => {
     const success = [];
     const failures = []
-    for (const metaAccount of metadataAccounts) {
-        const valid = await validateMetadataAccount(connection, metaAccount);
+    for (const mint of mints) {
+        const valid = await validateMetadataAccount(connection, getMetadataAccount(mint));
         if (valid) {
-            success.push(metaAccount);
+            success.push(mint);
         }else{
-            failures.push(metaAccount);
+            failures.push(mint);
         }
     }
     return {
@@ -332,19 +348,19 @@ export const checkMetadataAuthority = async (connection: Connection, metadataAcc
     return false;
 }
 
-export const checkAllMetasAuthority = async (connection: Connection, metadataAccounts: PublicKey[], authority: PublicKey) => {
+export const checkAllMetasAuthority = async (connection: Connection, mints: PublicKey[], authority: PublicKey) => {
     const success = [];
     const failures = []
-    for (const metaAccount of metadataAccounts) {
+    for (const mint of mints) {
         try {
-            const valid = await checkMetadataAuthority(connection, metaAccount, authority);
+            const valid = await checkMetadataAuthority(connection, getMetadataAccount(mint), authority);
             if (valid) {
-                success.push(metaAccount);
+                success.push(mint);
             }else{
-                failures.push(metaAccount);
+                failures.push(mint);
             }
         }catch(e) {
-            failures.push(metaAccount);
+            failures.push(mint);
         }
     }
     return {

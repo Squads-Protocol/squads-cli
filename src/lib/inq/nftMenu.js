@@ -131,6 +131,17 @@ export const nftSafeSigningInq = () => {
     return inquirer.prompt(questions);
 };
 
+export const nftUpdateTryFailuresInq = (num) => {
+    const questions = [
+        {
+            type: 'confirm',
+            name: 'rerun',
+            message: `Do you want to run the transfer for these previous ${num} failures?`,
+        }
+    ];
+    return inquirer.prompt(questions);
+};
+
 export const nftValidateCurrentAuthorityInq = (vault) => {
     const questions = [
         {
