@@ -333,7 +333,6 @@ class Menu{
                 const status = new Spinner("Executing transaction...");
                 status.start();
                 let successfullyExecuted = 0;
-                console.log(JSON.stringify(tx));
                 try {
                     if(tx.instructionIndex > 3) {
                         for (let ixIndex = tx.executedIndex + 1; ixIndex <= tx.instructionIndex; ixIndex++){
