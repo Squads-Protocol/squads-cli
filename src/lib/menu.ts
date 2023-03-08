@@ -338,8 +338,14 @@ class Menu{
                         for (let ixIndex = tx.executedIndex + 1; ixIndex <= tx.instructionIndex; ixIndex++){
                             const [ixPDA] = await getIxPDA(tx.publicKey, new anchor.BN(ixIndex), this.api.programId);
                             console.log("invoking instruction ", ixIndex);
-                            await this.api.executeInstruction(tx.publicKey, ixPDA);
-                            const _txStateUpdate = await this.api.squads.getTransaction(tx.publicKey);
+                            try {
+                                await this.api.executeInstruction(tx.publicKey, ixPDA);
+                            }catch(e){
+                                console.log("Error executing instruction, trying it again");
+                                await this.api.squads.getTransaction(tx.publicKey);
+                                await this.api.executeInstruction(tx.publicKey, ixPDA);
+                            }
+                            await this.api.squads.getTransaction(tx.publicKey);
                             successfullyExecuted++;
                         }
                     } else {
@@ -908,9 +914,11 @@ class Menu{
             const status = new Spinner("Initializing metadata authority update multisig transactions...");
             status.start();
             // setup log file
-            const logFilename = path.join(__dirname,`../authority-out-${Date.now()}.txt`);
+            const logtime = Date.now();
+            const logFilename = path.join(__dirname,`../authority-out-${logtime}.txt`);
             const transferOutWriteStream = fs.createWriteStream(logFilename, "utf8");
             transferOutWriteStream.write("Initiating bulk outgoing authority change transactions\n");
+            const fullResults = [];
             for(const batch of buckets){
                 const metasAdded = await createAuthorityUpdateTx(this.api.squads, ms.publicKey, vault, newAuthority, batch, this.api.connection, transferOutWriteStream, safeSign);
                 successfullyStagedMetas.push(...metasAdded.attached);
@@ -927,11 +935,16 @@ class Menu{
                         const txid = await this.api.connection.sendRawTransaction(signed.serialize());
                         await this.api.connection.confirmTransaction(txid, "processed");
                     }catch(e){
-                        console.log(e);
+                        console.log("Skipped internal squads tx meta memo");
                     }
                 }
+                fullResults.push(metasAdded);
             }
             transferOutWriteStream.close();
+            // write the json log file
+            const logFilenameJson = path.join(__dirname,`../authority-out-mints-${logtime}.json`);
+            // write the successful fullResults to the logFilenameJson
+            fs.writeFileSync(logFilenameJson, JSON.stringify(fullResults, null, 2));
             status.stop();
             console.log(`Finished staging authority transfer txs for ${successfullyStagedMetas.length} metadata accounts`);
             console.log(`Output logs written to: ${logFilename}`);
@@ -945,6 +958,7 @@ class Menu{
         const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
         this.header(vault);
         let error = false;
+        console.log("This process will check that all the provided mints specified have the proper matching metadata account update authority, and also possess valid metadata accounts.");
         const {mintList, type, publicKey} = await nftValidateCurrentAuthorityInq(vault);
         let allMints: PublicKey[] = [];
         try {

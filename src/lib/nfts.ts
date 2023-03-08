@@ -207,6 +207,8 @@ export const createAuthorityUpdateTx = async (squadsSdk: Squads, multisig: Publi
                 ws.write(`${mint.toBase58()}\n`);
                 attached.push(mint);
             }
+            // flash tx state
+            await squadsSdk.getTransaction(txState.publicKey);
         }catch (e) {
             attachFails.push(mint);
         }
