@@ -10,7 +10,7 @@ import SetupCluster from "./lib/inq/cluster.js";
 import yargs from 'yargs';
 import {hideBin} from 'yargs/helpers'
 
-const VERSION = "1.3.0";
+const VERSION = "2.1.3";
 
 const argv = yargs(hideBin(process.argv)).options({
     cluster: { type: 'string'},

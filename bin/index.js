@@ -11,7 +11,7 @@ var walletPath_js_1 = tslib_1.__importDefault(require("./lib/inq/walletPath.js")
 var cluster_js_1 = tslib_1.__importDefault(require("./lib/inq/cluster.js"));
 var yargs_1 = tslib_1.__importDefault(require("yargs"));
 var helpers_1 = require("yargs/helpers");
-var VERSION = "1.3.0";
+var VERSION = "2.1.3";
 var argv = (0, yargs_1.default)((0, helpers_1.hideBin)(process.argv)).options({
     cluster: { type: 'string' },
     programId: { type: 'string' },

@@ -47,7 +47,7 @@ import {
 import API from "./api.js";
 
 import { shortenTextEnd } from './utils.js';
-import { checkAllMetas, checkAllMetasAuthority, createAuthorityUpdateTx, getMetadataAccount, loadNFTMints, prepareBulkUpdate, sendTxMetaIx } from './nfts.js';
+import { checkAllMetas, checkAllMetasAuthority, createAuthorityUpdateTx, estimateBulkUpdate, getMetadataAccount, loadNFTMints, prepareBulkUpdate, sendTxMetaIx } from './nfts.js';
 import { boolean } from 'yargs';
 import { updateMetadataAuthorityIx } from './metadataInstructions.js';
 import { TransactionAccount } from '@sqds/sdk/lib/sdk/src/types.js';
@@ -902,6 +902,13 @@ class Menu{
         let buckets: PublicKey[][] = [];
         if (!error) {
             buckets = await prepareBulkUpdate(mintList);
+            try {
+                const estimate = await estimateBulkUpdate(this.api.squads, this.api.connection, buckets, this.wallet.publicKey);
+                console.log(`NOTICE: The cost estimate for staging these transactions is roughly ${estimate}SOL (this is an estimate, the actual cost may vary).`);
+                console.log(` Make sure that the CLI wallet has enough to cover the creation.`);
+            }catch(e) {
+                console.log(`(Unable to calculate the estimate cost of initiating the transactions)`);
+            }
             const {confirm} = await nftUpdateAuthorityConfirmInq(newAuthority.toBase58(), mintList.length, buckets.length);
             if (confirm) {
                 continueProcessing = true;

@@ -418,3 +418,18 @@ export const sendTxMetaIx = async (msPDA: PublicKey, txPDA: PublicKey, member: P
         data: metaData,
       });
 };
+
+// rough calculation of how much SOL the process will take
+export const estimateBulkUpdate = async (sdk: Squads, connection: Connection, buckets: PublicKey[][], testKey: PublicKey) => {
+    const numTx = buckets.length;
+    // iterate through each bucket, and create a transaction, then create an instruction for each item in each bucket
+    const {blockhash, lastValidBlockHeight} = await connection.getLatestBlockhash();
+    let ixBytes = 0;
+    const metaIx = await updateMetadataAuthorityIx(testKey, testKey, testKey);
+    const testIx = await sdk.buildAddInstruction(testKey, testKey, metaIx, 0);
+    ixBytes = testIx.data.length;
+    // reduce the buckets to the total number of instructions
+    const totalBytes = buckets.reduce((acc, cur) => acc + cur.length, 0) * ixBytes;
+    const rent = await connection.getMinimumBalanceForRentExemption(totalBytes);
+    return rent / anchor.web3.LAMPORTS_PER_SOL;
+};
