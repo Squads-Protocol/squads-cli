@@ -164,9 +164,11 @@ class Menu{
         else if (action === "Transactions") {
             const status = new Spinner("Loading transactions...");
             status.start();
-            const txs = await this.api.getTransactions(ms);
+            // first get/flash the ms to see if the transactionIndex has changed
+            const msState = await this.api.squads.getMultisig(ms.publicKey);
+            const txs = await this.api.getTransactions(msState);
             status.stop();
-            this.transactions(txs, ms);
+            this.transactions(txs, msState);
         }
         else if (action === "Create new Transaction") {
             this.createTransaction(ms);
