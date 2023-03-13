@@ -63,6 +63,7 @@ class Menu{
     wallet;
     api;
     connection;
+    walletBalance: number = 0;
     constructor(wallet: any, connection: any, programId?: string, programManagerId?: string, txMetaProgramId?: string) {
         this.wallet = wallet.wallet;
         this.connection = connection;
@@ -70,20 +71,25 @@ class Menu{
         this.programManagerId = programManagerId ? new PublicKey(programManagerId) : DEFAULT_PROGRAM_MANAGER_PROGRAM_ID;
         this.txMetaProgramId = txMetaProgramId ? new PublicKey(txMetaProgramId) : new PublicKey(TXMETA_PROGRAM_ID);
         this.api = new API(wallet.wallet, connection, this.programId, this.programManagerId);
-        this.top();
+        this.api.getWalletBalance(async (balance) => {
+            this.walletBalance = balance;
+        });
     }
 
-    changeWallet(wallet: any){
+    async changeWallet(wallet: any){
         this.wallet = wallet;
         this.api = new API(wallet.wallet, this.connection, this.programId, this.programManagerId);
+        this.walletBalance = await this.api.getWalletBalance();
     }
 
-    changeConnection(connection: any){
+    async changeConnection(connection: any){
         this.connection = connection;
         this.api = new API(this.wallet, connection, this.programId, this.programManagerId);
+        this.walletBalance = await this.api.getWalletBalance();
     }
 
     header = async (vault?: PublicKey) => {
+        this.api.getWalletBalance();
         clear();
         console.log(`ProgramId: ${this.programId.toBase58()}`);
         console.log(
@@ -91,7 +97,7 @@ class Menu{
                 figlet.textSync('SQUADS', { font: "Slant", horizontalLayout: 'full' })
             )
         );
-        console.log( chalk.blue("Connected wallet: ") + chalk.white(this.wallet.publicKey.toBase58()));
+        console.log( chalk.blue("Connected wallet: ") + chalk.white(this.wallet.publicKey.toBase58()) + ( this.walletBalance > 0 ? ( chalk.blue(" (") + chalk.white(this.walletBalance) + chalk.blue(" SOL)") ) : "" ));
         if(vault){
             try {
                 console.log( chalk.blue("Vault address: ") + chalk.white(vault.toBase58()));
@@ -905,7 +911,10 @@ class Menu{
         if (!error) {
             buckets = await prepareBulkUpdate(mintList);
             try {
+                const estimateSpinner = new Spinner("Calculating the cost of initiating the transactions...");
+                estimateSpinner.start();
                 const estimate = await estimateBulkUpdate(this.api.squads, this.api.connection, buckets, this.wallet.publicKey);
+                estimateSpinner.stop();
                 console.log(`NOTICE: The cost estimate for staging these transactions is roughly ${estimate}SOL (this is an estimate, the actual cost may vary).`);
                 console.log(` Make sure that the CLI wallet has enough to cover the creation.`);
             }catch(e) {
@@ -924,7 +933,7 @@ class Menu{
             status.start();
             // setup log file
             const logtime = Date.now();
-            const logFilename = path.join(__dirname,`../authority-out-${logtime}.txt`);
+            const logFilename = path.join(process.cwd(),`/authority-out-${logtime}.txt`);
             const transferOutWriteStream = fs.createWriteStream(logFilename, "utf8");
             transferOutWriteStream.write("Initiating bulk outgoing authority change transactions\n");
             const fullResults = [];
@@ -951,7 +960,7 @@ class Menu{
             }
             transferOutWriteStream.close();
             // write the json log file
-            const logFilenameJson = path.join(__dirname,`../authority-out-mints-${logtime}.json`);
+            const logFilenameJson = path.join(process.cwd(),`/authority-out-mints-${logtime}.json`);
             // write the successful fullResults to the logFilenameJson
             fs.writeFileSync(logFilenameJson, JSON.stringify(fullResults, null, 2));
             status.stop();

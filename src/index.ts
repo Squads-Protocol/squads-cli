@@ -34,7 +34,8 @@ const load = async (initCluster?: string, programId?: string, programManagerId?:
     }
 
     // start the menu
-    new Menu(cliWallet, cliConnection, programId, programManagerId, txMetaProgramId);
+    const cli = new Menu(cliWallet, cliConnection, programId, programManagerId, txMetaProgramId);
+    cli.top();
 };
 
 const help = async () => {

@@ -1,4 +1,11 @@
-import {createUpdateMetadataAccountInstruction, UpdateMetadataAccountInstructionArgs, PROGRAM_ID} from '@metaplex-foundation/mpl-token-metadata';
+import {
+    createUpdateMetadataAccountInstruction,
+    UpdateMetadataAccountInstructionArgs,
+    PROGRAM_ID,
+
+    SetAndVerifyCollectionInstructionAccounts, SetAndVerifyCollectionStruct, setAndVerifyCollectionInstructionDiscriminator,
+    createSetAndVerifyCollectionInstruction
+} from '@metaplex-foundation/mpl-token-metadata';
 import {PublicKey} from "@solana/web3.js";
 
 export const updateMetadataAuthorityIx = (newAuthority: PublicKey, currentAuthority: PublicKey, metadataAccount: PublicKey) => {
@@ -15,5 +22,17 @@ export const updateMetadataAuthorityIx = (newAuthority: PublicKey, currentAuthor
     };
     return createUpdateMetadataAccountInstruction(accounts, instructionArgs, PROGRAM_ID);
 };
+
+// export const setAndVerifyCollectionIx = (collection: PublicKey, authority: PublicKey, metadataAccount: PublicKey) => {
+//     const accounts: SetAndVerifyCollectionInstructionAccounts = {
+//         metadata,
+//         collectionAuthority,
+//         payer,
+//         updateAuthority,
+//         collectionMint,
+//         collection,
+//         collectionMasterEditionAccount
+//     };
+//     return createSetAndVerifyCollectionInstruction(accounts, PROGRAM_ID);
 
 export {PROGRAM_ID as METAPLEX_PROGRAM_ID};

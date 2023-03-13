@@ -9,7 +9,7 @@ import {idl} from "../info";
 import { ASSOCIATED_TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { Wallet } from "@coral-xyz/anchor";
-import { Connection, PublicKey } from "@solana/web3.js";
+import { Connection, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 
 class API{
     squads;
@@ -227,6 +227,19 @@ class API{
 
     getVaultAssets(vaultPDA: PublicKey) {
         return getAssets(this.connection, vaultPDA);
+    }
+
+    async getWalletBalance(cb?: (balance: number) => void) {
+        try {
+            const lamports = await this.connection.getBalance(this.wallet.publicKey, "processed");
+            const SOL = lamports / LAMPORTS_PER_SOL;
+            if(cb){
+                cb(SOL);
+            }
+            return SOL;
+        }catch(e){
+            return 0;
+        }
     }
 
     async createATA(mint: PublicKey, owner: PublicKey){
