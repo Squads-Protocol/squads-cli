@@ -9,6 +9,7 @@ export const nftMainInq = () => {
         choices: [
             {name: "Update Authority Change", value: 0},
             {name: "Validate Metadata Accounts", value: 1},
+            {name: "Batch NFT Transfer", value: 2},
             "Back",
         ],
       }
@@ -180,3 +181,26 @@ export const nftValidateCurrentAuthorityInq = (vault) => {
     ];
     return inquirer.prompt(questions);
 };
+
+export const nftMintListInq = () => {
+    const questions = [
+        {
+            type: 'input',
+            name: 'mintList',
+            message: 'Enter the location of the mint list file (.json) for the NFTs you want to transfer out. (Press enter to go back)',
+        }
+    ];
+    return inquirer.prompt(questions);
+}
+
+
+export const nftTransferDestinationInq = () => {
+    const questions = [
+        {
+            type: 'input',
+            name: 'destination',
+            message: 'Where do you want to transfer the NFTs to? (Press enter to go back)',
+        }
+    ];
+    return inquirer.prompt(questions);
+}

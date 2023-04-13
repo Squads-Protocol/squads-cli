@@ -42,6 +42,8 @@ import {
     nftSafeSigningInq,
     nftValidateCurrentAuthorityInq,
     nftUpdateTryFailuresInq,
+    nftMintListInq,
+    nftTransferDestinationInq,
 } from "./inq/index.js";
 
 import API from "./api.js";
@@ -738,6 +740,8 @@ class Menu{
             this.nftAuthorityChange(ms);
         } else if (action === 1) {
             this.nftValidateMetaAuthorities(ms);
+        } else if (action === 2) {
+            this.nftBatchTransfer(ms);
         } else {
             this.multisig(ms);
         }
@@ -1015,6 +1019,29 @@ class Menu{
             }
         }
         this.nfts(ms);
+    }
+
+    nftBatchTransfer = async (ms: any) => {
+        clear();
+        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+        this.header(vault);
+        const {mintList} = await nftMintListInq();
+        if (mintList && mintList.length > 0) {
+            const status = new Spinner("Loading the mint list...");
+            status.start();
+            const mints = await loadNFTMints(mintList);
+            status.stop();
+            // should check that the vault actually owns these
+            console.log(JSON.stringify(mints));
+            const {destination} = await nftTransferDestinationInq();
+            if (destination && destination.length > 0) {
+                console.log('destination: ' + destination);
+                console.log('current vault', vault.toBase58());
+            }
+        }
+
+        // this goes back to main nft menu
+        // this.nfts(ms);
     }
 };
 

@@ -28,7 +28,9 @@ import {
     nftUpdateShowFailedMetasInq,
     nftSafeSigningInq,
     nftValidateCurrentAuthorityInq,
-    nftUpdateTryFailuresInq 
+    nftUpdateTryFailuresInq,
+    nftMintListInq,
+    nftTransferDestinationInq,
 } from "./nftMenu.js";
 
 export {
@@ -61,5 +63,7 @@ export {
     nftUpdateShowFailedMetasInq,
     nftSafeSigningInq,
     nftValidateCurrentAuthorityInq,
-    nftUpdateTryFailuresInq
+    nftUpdateTryFailuresInq,
+    nftMintListInq,
+    nftTransferDestinationInq,
 };
