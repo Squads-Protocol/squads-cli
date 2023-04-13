@@ -1038,6 +1038,15 @@ class Menu{
                 console.log('destination: ' + destination);
                 console.log('current vault', vault.toBase58());
             }
+            // check validate the atas exist for this destination
+
+            // ask to create the atas (and show estimate for the cost - put recommended)
+
+            // run the immediate ATA creations
+
+            // put the mints into the relevant buckets
+
+            // tell them that they will be creating the transactions and run an estimate to slate the txs
         }
 
         // this goes back to main nft menu
