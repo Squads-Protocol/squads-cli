@@ -49,10 +49,22 @@ import {
 import API from "./api.js";
 
 import { shortenTextEnd } from './utils.js';
-import { checkAllMetas, checkAllMetasAuthority, createAuthorityUpdateTx, estimateBulkUpdate, getMetadataAccount, loadNFTMints, prepareBulkUpdate, sendTxMetaIx } from './nfts.js';
+import {
+    checkAllMetas,
+    checkAllMetasAuthority,
+    checkIfMintsAreValidAndOwnedByVault,
+    createAuthorityUpdateTx, createWithdrawNftTx,
+    estimateBulkUpdate, estimateBulkWithdrawNFT,
+    getMetadataAccount,
+    loadNFTMints,
+    prepareBulkUpdate,
+    sendTxMetaIx
+} from './nfts.js';
 import { boolean } from 'yargs';
 import { updateMetadataAuthorityIx } from './metadataInstructions.js';
 import { TransactionAccount } from '@sqds/sdk/lib/sdk/src/types.js';
+import {nftWithdrawConfirmInq} from "./inq/nftMenu";
+import {Metaplex} from "@metaplex-foundation/js";
 
 const Spinner = CLI.Spinner;
 const Progress = CLI.Progress;
@@ -1031,24 +1043,72 @@ class Menu{
             status.start();
             const mints = await loadNFTMints(mintList);
             status.stop();
-            // should check that the vault actually owns these
-            console.log(JSON.stringify(mints));
+            const {success, failures} = await checkIfMintsAreValidAndOwnedByVault(this.api.connection, mints, vault)
+            failures.forEach((mint) => {
+                console.log(chalk.red("This NFT ("+mint+") is not owned by this squad"))
+            })
             const {destination} = await nftTransferDestinationInq();
+            let error = true
             if (destination && destination.length > 0) {
-                console.log('destination: ' + destination);
-                console.log('current vault', vault.toBase58());
+                try {
+                    new PublicKey(destination)
+                    error = false
+                } catch (e) {
+                    error = true
+                }
             }
-            // check validate the atas exist for this destination
+            console.log('');
+            let continueProcessing = false;
+            let buckets: PublicKey[][] = [];
+            if (!error) {
+                buckets = await prepareBulkUpdate(success);
+                try {
+                    const estimateSpinner = new Spinner("Calculating the cost of initiating the transactions...");
+                    estimateSpinner.start();
+                    const estimate = await estimateBulkWithdrawNFT(this.api.squads, this.api.connection, buckets, this.wallet.publicKey);
+                    estimateSpinner.stop();
+                    console.log(`NOTICE: The cost estimate for staging these transactions is roughly ${estimate}SOL (this is an estimate, the actual cost may vary).`);
+                    console.log(` Make sure that the CLI wallet has enough to cover the creation.`);
+                }catch(e) {
+                    console.log(`(Unable to calculate the estimate cost of initiating the transactions)`);
+                }
+                const {confirm} = await nftWithdrawConfirmInq(destination, success.length, buckets.length);
+                if (confirm) {
+                    continueProcessing = true;
+                }
+            }
+            if (continueProcessing) {
+                const successfullyStagedMetas: PublicKey[] = [];
+                console.log("Creating the multisig transactions, this may take some time depending on the number of mints and your internet connection speed.");
+                const status = new Spinner("Initializing NFTs transfer multisig transactions...");
+                status.start();
+                // setup log file
+                const fullResults = [];
+                for(const batch of buckets){
+                    const metasAdded = await createWithdrawNftTx(this.api.squads, ms.publicKey, vault, new PublicKey(destination), batch, this.api.connection);
+                    successfullyStagedMetas.push(...metasAdded.attached);
 
-            // ask to create the atas (and show estimate for the cost - put recommended)
-
-            // run the immediate ATA creations
-
-            // put the mints into the relevant buckets
-
-            // tell them that they will be creating the transactions and run an estimate to slate the txs
+                    // if we haven't had an activation error, activate it
+                    if (metasAdded.txError === 'none' || metasAdded.txError === 'approval') {
+                        // send the txmeta if we have a valid tx metadata program
+                        try {
+                            const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
+                            const txMetaTx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.wallet.publicKey});
+                            const txMetaIx = await sendTxMetaIx(ms.publicKey, metasAdded.txPDA, this.wallet.publicKey, {type: 'nftMassWithdraw', amount: successfullyStagedMetas.length, destination}, this.txMetaProgramId);
+                            txMetaTx.add(txMetaIx);
+                            const signed = await this.wallet.signTransaction(txMetaTx);
+                            const txid = await this.api.connection.sendRawTransaction(signed.serialize());
+                            await this.api.connection.confirmTransaction(txid, "processed");
+                        }catch(e){
+                            console.log("Skipped internal squads tx meta memo");
+                        }
+                    }
+                    fullResults.push(metasAdded);
+                }
+                status.stop();
+                console.log(`Finished staging NFTs transfer txs for ${successfullyStagedMetas.length} mints`);
+            }
         }
-
         // this goes back to main nft menu
         await continueInq();
         this.nfts(ms);

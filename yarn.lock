@@ -494,10 +494,10 @@
   resolved "https://registry.yarnpkg.com/@metaplex-foundation/cusper/-/cusper-0.0.2.tgz#dc2032a452d6c269e25f016aa4dd63600e2af975"
   integrity sha512-S9RulC2fFCFOQraz61bij+5YCHhSO9llJegK8c8Y6731fSi6snUSQJdCUqYS8AIgR0TKbQvdvgSyIIdbDFZbBA==
 
-"@metaplex-foundation/js@^0.18.2":
-  version "0.18.2"
-  resolved "https://registry.yarnpkg.com/@metaplex-foundation/js/-/js-0.18.2.tgz#77f5eccdac065b66ee00460f4596386a0c23f41b"
-  integrity sha512-8BdX+XayDTMjm8I6rS/3Z2xGIpwzrb6dSPnpLDGju+/eF7BJ1/y9FsIz1Qo2hEca/VRU6uxqNEck5abIscUSxA==
+"@metaplex-foundation/js@^0.18.3":
+  version "0.18.3"
+  resolved "https://registry.yarnpkg.com/@metaplex-foundation/js/-/js-0.18.3.tgz#d61d25b9e3ab91d069cd6a87fa9eb5d01ce56ed3"
+  integrity sha512-rqI8vI+V5Bt3pgrv8E7leqR8gxxdw6Q/pbWg4EznbuYSmpNGRQkjMaZE0C+rQrmtQbMqUD9rUsUuYOoppSlI4A==
   dependencies:
     "@bundlr-network/client" "^0.8.8"
     "@metaplex-foundation/beet" "0.7.1"
@@ -505,7 +505,7 @@
     "@metaplex-foundation/mpl-candy-guard" "^0.3.0"
     "@metaplex-foundation/mpl-candy-machine" "^5.0.0"
     "@metaplex-foundation/mpl-candy-machine-core" "^0.1.2"
-    "@metaplex-foundation/mpl-token-metadata" "^2.7.0"
+    "@metaplex-foundation/mpl-token-metadata" "^2.8.6"
     "@noble/ed25519" "^1.7.1"
     "@noble/hashes" "^1.1.3"
     "@solana/spl-token" "^0.3.5"
@@ -613,19 +613,6 @@
     "@metaplex-foundation/mpl-core" "^0.0.2"
     "@solana/spl-token" "^0.1.8"
     "@solana/web3.js" "^1.31.0"
-
-"@metaplex-foundation/mpl-token-metadata@^2.7.0":
-  version "2.8.5"
-  resolved "https://registry.yarnpkg.com/@metaplex-foundation/mpl-token-metadata/-/mpl-token-metadata-2.8.5.tgz#b36e5fe8181eab86ba70d6e36cfa6f44be523836"
-  integrity sha512-CfI8zmU9qr5j3KIsmBg7VtBz9Eqb4CjBtBa7CZg+5gMa/bVDsFIfmZCXaM4dS1KcWPsoFSyJYnQApbBjbyCZEw==
-  dependencies:
-    "@metaplex-foundation/beet" "^0.7.1"
-    "@metaplex-foundation/beet-solana" "^0.4.0"
-    "@metaplex-foundation/cusper" "^0.0.2"
-    "@solana/spl-token" "^0.3.6"
-    "@solana/web3.js" "^1.66.2"
-    bn.js "^5.2.0"
-    debug "^4.3.4"
 
 "@metaplex-foundation/mpl-token-metadata@^2.8.6":
   version "2.8.6"

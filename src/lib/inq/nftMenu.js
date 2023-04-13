@@ -88,6 +88,17 @@ export const nftUpdateAuthorityConfirmIncomingInq = (newAuthority, numMints) => 
     return inquirer.prompt(questions);
 };
 
+export const nftWithdrawConfirmInq = (destination, numMints, numTransactions) => {
+    const questions = [
+        {
+            type: 'confirm',
+            name: 'confirm',
+            message: `Are you sure you want to send ${numMints} NFTs to ${destination}? This will create ${numTransactions} transactions in the multisig.`,
+        }
+    ];
+    return inquirer.prompt(questions);
+};
+
 export const nftUpdateShowFailedMintsInq = () => {
     const questions = [
         {

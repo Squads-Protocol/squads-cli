@@ -1,6 +1,6 @@
 {
   "name": "@sqds/cli",
-  "version": "2.1.5",
+  "version": "2.2.6",
   "description": "",
   "main": "bin/index.js",
   "scripts": {
@@ -24,7 +24,7 @@
   "license": "AGPL-3.0-or-later",
   "dependencies": {
     "@coral-xyz/anchor": "^0.26.0",
-    "@metaplex-foundation/js": "^0.18.2",
+    "@metaplex-foundation/js": "^0.18.3",
     "@metaplex-foundation/mpl-token-metadata": "^2.8.6",
     "@metaplex/js": "^4.12.0",
     "@octokit/auth-basic": "^1.4.8",

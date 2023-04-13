@@ -1,18 +1,31 @@
-import {programs} from "@metaplex/js";
+import {NodeWallet, programs} from "@metaplex/js";
 import {TOKEN_PROGRAM_ID} from '@solana/spl-token';
 import {getMultipleAccountsBatch, shortenTextEnd} from "./utils.js";
 import axios from "axios";
 import {utils} from "@coral-xyz/anchor";
 import CLI from "clui";
 import * as anchor from "@coral-xyz/anchor";
-import { Connection, PublicKey, TransactionInstruction } from "@solana/web3.js";
-import {Account, AccountInfo,lamports, Metaplex, parseMetadataAccount, toAccountInfo, toMetadata, toMetadataAccount, UnparsedAccount, UnparsedMaybeAccount} from "@metaplex-foundation/js";
+import {Connection, Keypair, PublicKey, TransactionInstruction} from "@solana/web3.js";
+import {
+    Account,
+    AccountInfo,
+    lamports,
+    Metaplex,
+    parseMetadataAccount,
+    toAccountInfo,
+    token,
+    toMetadata,
+    toMetadataAccount,
+    UnparsedAccount,
+    UnparsedMaybeAccount, walletAdapterIdentity
+} from "@metaplex-foundation/js";
 import * as fs from "fs";
 import { METAPLEX_PROGRAM_ID, updateMetadataAuthorityIx } from "./metadataInstructions.js";
-import {} from '@metaplex-foundation/mpl-token-metadata';
+import {TokenStandard} from '@metaplex-foundation/mpl-token-metadata';
 
 import Squads from "@sqds/sdk";
 import { metadata } from "figlet";
+import {fail} from "yargs";
 
 const {Progress} = CLI;
 export const checkIsNFT = async (connection: Connection, acc: any) => {
@@ -432,4 +445,179 @@ export const estimateBulkUpdate = async (sdk: Squads, connection: Connection, bu
     const totalBytes = buckets.reduce((acc, cur) => acc + cur.length, 0) * ixBytes;
     const rent = await connection.getMinimumBalanceForRentExemption(totalBytes);
     return rent / anchor.web3.LAMPORTS_PER_SOL;
+};
+
+export const estimateBulkWithdrawNFT = async (sdk: Squads, connection: Connection, buckets: PublicKey[][], testKey: PublicKey) => {
+    let totalBytes = buckets.reduce((acc, cur) => acc + cur.length, 0) * 640; // Metaplex transfer Ix
+    totalBytes += buckets.length * 205 // MsTx rent
+    const rent = await connection.getMinimumBalanceForRentExemption(totalBytes);
+    return rent / anchor.web3.LAMPORTS_PER_SOL;
+};
+
+export const checkIfMintsAreValidAndOwnedByVault = async (connection: Connection, mints: PublicKey[], vault: PublicKey) => {
+    const metaplex = new Metaplex(connection);
+
+    const success = []
+    const failures = []
+
+    try {
+        const loadedNFTs = await metaplex.nfts().findAllByMintList({
+            mints: mints
+        });
+        const allTokens = await connection.getParsedTokenAccountsByOwner(vault, {programId: TOKEN_PROGRAM_ID});
+        for (const nft of loadedNFTs as any) {
+            const index = loadedNFTs.indexOf(nft);
+            if (!nft)
+                failures.push(mints[index].toBase58())
+            else {
+                const found = allTokens.value.filter((value) => value.account.data.parsed.info.tokenAmount.uiAmount > 0).find((value) => value.account.data.parsed.info.mint === nft?.mintAddress.toBase58())
+                if (!found)
+                    failures.push(mints[index].toBase58())
+                else
+                    success.push(nft?.mintAddress)
+            }
+        }
+    } catch (e) {
+        console.log(e)
+    }
+    return {success,failures}
+}
+
+export const createWithdrawNftTx = async (squadsSdk: Squads, multisig: PublicKey, vault: PublicKey, destination: PublicKey, mints: PublicKey[], connection: Connection) => {
+    // create the transaction to update the authority
+    // attach the update authority ix to the transaction (up to 250)
+    const attached = [];
+    const attachFails = [];
+    let txError: BatchTransactionCreationError = 'none';
+    const queue = mints;
+    let txState = await squadsSdk.createTransaction(multisig, 1);
+    const batchLength = mints.length;
+    let hasError = false;
+    const failures = [];
+
+    const keypair = new Keypair({
+        publicKey: vault.toBytes(),
+        secretKey: new Keypair().secretKey,
+    })
+    const garbageWallet = new NodeWallet(keypair)
+
+    const metaplex = Metaplex.make(connection).use(
+        walletAdapterIdentity(garbageWallet)
+    )
+
+    while (queue.length > 0) {
+        const mint = queue.shift();
+        if (!mint) {
+            break;
+        }
+
+        const nft = await metaplex
+            .nfts()
+            .findByMint({ mintAddress: new PublicKey(mint) })
+        const authorizationDetails = nft?.programmableConfig?.ruleSet
+            ? { rules: nft.programmableConfig.ruleSet }
+            : undefined
+
+        // EDGE Case fixing
+        const mutableNFT = nft as any
+        if (mutableNFT.model === "sft" && !mutableNFT.tokenStandard)
+            mutableNFT.tokenStandard = TokenStandard.FungibleAsset
+
+        const transactionBuilder = metaplex
+            .nfts()
+            .builders()
+            .transfer({
+                nftOrSft: mutableNFT,
+                fromOwner: vault,
+                toOwner: destination,
+                amount: token(1),
+                authorizationDetails,
+            })
+
+        for (const ix of transactionBuilder.getInstructions()) {
+            try {
+                const addedIx = await squadsSdk.addInstruction(txState.publicKey, ix);
+                if (addedIx) {
+                    attached.push(mint);
+                }
+                // flash tx state
+                await squadsSdk.getTransaction(txState.publicKey);
+            }catch (e) {
+                attachFails.push(mint);
+            }
+        }
+    }
+    // check the tx before activating
+    txState = await squadsSdk.getTransaction(txState.publicKey);
+    // if the transaction is not full and there are still items to attach, then add them
+    if (txState.instructionIndex !== batchLength && attachFails.length > 0) {
+        while (attachFails.length > 0) {
+            const mint = attachFails.shift();
+            if (!mint) {
+                break;
+            }
+
+            const nft = await metaplex
+                .nfts()
+                .findByMint({ mintAddress: new PublicKey(mint) })
+            const authorizationDetails = nft?.programmableConfig?.ruleSet
+                ? { rules: nft.programmableConfig.ruleSet }
+                : undefined
+
+            // EDGE Case fixing
+            const mutableNFT = nft as any
+            if (mutableNFT.model === "sft" && !mutableNFT.tokenStandard)
+                mutableNFT.tokenStandard = TokenStandard.FungibleAsset
+
+            const transactionBuilder = metaplex
+                .nfts()
+                .builders()
+                .transfer({
+                    nftOrSft: mutableNFT,
+                    fromOwner: vault,
+                    toOwner: destination,
+                    amount: token(1),
+                    authorizationDetails,
+                })
+
+            for (const ix of transactionBuilder.getInstructions()) {
+                try {
+                    const addedIx = await squadsSdk.addInstruction(txState.publicKey, ix);
+                    if (addedIx) {
+                        attached.push(mint);
+                    }
+                } catch (e) {
+                    hasError = true;
+                    failures.push(mint);
+                }
+            }
+        }
+    }
+    // activate the transaction
+    try {
+        await squadsSdk.activateTransaction(txState.publicKey);
+
+        // approve the transaction
+        try {
+            await squadsSdk.approveTransaction(txState.publicKey);
+            txError = 'none';
+        }catch(e){
+            txError = 'approval';
+        }
+    }catch(e){
+        txError = 'activation';
+
+        // try one more time
+        await squadsSdk.activateTransaction(txState.publicKey);
+
+        // approve the transaction
+        try {
+            await squadsSdk.approveTransaction(txState.publicKey);
+            txError = 'none';
+        }catch(e){
+            txError = 'approval';
+        }
+    }
+
+    return { attached, failures, txPDA: txState.publicKey, txError };
 };
