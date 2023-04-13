@@ -1041,7 +1041,8 @@ class Menu{
         }
 
         // this goes back to main nft menu
-        // this.nfts(ms);
+        await continueInq();
+        this.nfts(ms);
     }
 };
 
