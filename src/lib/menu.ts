@@ -362,6 +362,7 @@ class Menu{
                             console.log("invoking instruction ", ixIndex);
                             try {
                                 await this.api.executeInstruction(tx.publicKey, ixPDA);
+                                await this.api.squads.getTransaction(tx.publicKey)
                             }catch(e){
                                 console.log("Error executing instruction, trying it again");
                                 await this.api.squads.getTransaction(tx.publicKey);

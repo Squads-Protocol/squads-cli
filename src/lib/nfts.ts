@@ -448,8 +448,8 @@ export const estimateBulkUpdate = async (sdk: Squads, connection: Connection, bu
 };
 
 export const estimateBulkWithdrawNFT = async (sdk: Squads, connection: Connection, buckets: PublicKey[][], testKey: PublicKey) => {
-    let totalBytes = buckets.reduce((acc, cur) => acc + cur.length, 0) * 640; // Metaplex transfer Ix
-    totalBytes += buckets.length * 205 // MsTx rent
+    let totalBytes = buckets.reduce((acc, cur) => acc + cur.length, 0) * 740; // Metaplex transfer Ix
+    totalBytes += buckets.length * 210 // MsTx rent
     const rent = await connection.getMinimumBalanceForRentExemption(totalBytes);
     return rent / anchor.web3.LAMPORTS_PER_SOL;
 };
