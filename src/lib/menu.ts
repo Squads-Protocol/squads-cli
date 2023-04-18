@@ -1094,7 +1094,7 @@ class Menu{
                         try {
                             const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
                             const txMetaTx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.wallet.publicKey});
-                            const txMetaIx = await sendTxMetaIx(ms.publicKey, metasAdded.txPDA, this.wallet.publicKey, {type: 'nftMassWithdraw', amount: successfullyStagedMetas.length, destination}, this.txMetaProgramId);
+                            const txMetaIx = await sendTxMetaIx(ms.publicKey, metasAdded.txPDA, this.wallet.publicKey, {type: 'nftMassWithdraw', amount: metasAdded.attached.length, destination}, this.txMetaProgramId);
                             txMetaTx.add(txMetaIx);
                             const signed = await this.wallet.signTransaction(txMetaTx);
                             const txid = await this.api.connection.sendRawTransaction(signed.serialize());
