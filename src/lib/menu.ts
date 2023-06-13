@@ -60,11 +60,9 @@ import {
     prepareBulkUpdate,
     sendTxMetaIx
 } from './nfts.js';
-import { boolean } from 'yargs';
 import { updateMetadataAuthorityIx } from './metadataInstructions.js';
-import { TransactionAccount } from '@sqds/sdk/lib/sdk/src/types.js';
 import {nftWithdrawConfirmInq} from "./inq/nftMenu";
-import {Metaplex} from "@metaplex-foundation/js";
+import {validatorMainInq, validatorWithdrawAuthDestPrompt, validatorWithdrawAuthPrompt} from "./inq/validatorMenu";
 
 const Spinner = CLI.Spinner;
 const Progress = CLI.Progress;
@@ -139,7 +137,7 @@ class Menu{
         try {
             this.multisigs = await this.api.getSquads(this.wallet.publicKey);
             spinner.stop();
-            const testList = await loadAuthorities(this.multisigs); 
+            const testList = await loadAuthorities(this.multisigs);
 
             const dIndex = testList.length;
             testList.push({name:"<- Go back", value: dIndex, short: "Go back"});
@@ -201,6 +199,8 @@ class Menu{
         }
         else if (action === "Bulk NFT Operations") {
             this.nfts(ms);
+        } else if (action === "Validator") {
+            this.validator(ms);
         }else{
             this.multisigList();
         }
@@ -267,7 +267,7 @@ class Menu{
                     console.log("This will create a new multisig transaction for authority/signer " + chalk.blue(authorityPDA.toBase58()));
                     const {yes} = await basicConfirm(`Create a transaction with ${ixes.length} instructions?`, false);
                     if (yes) {
-                        
+
                         status.start();
                         const tx = await this.api.createTransaction(ms.publicKey, parseInt(authority, 10));
                         status.stop();
@@ -323,7 +323,7 @@ class Menu{
         console.log("View on the web:");
         console.log(chalk.yellow("https://explorer.solana.com/address/" + tx.publicKey.toBase58()));
         console.log("");
-        
+
         const {action} = await transactionPrompt(tx);
         if(action === "<- Go back") {
             this.transactions(txs, ms);
@@ -348,7 +348,7 @@ class Menu{
                 }
             }else{
                 this.transaction(tx, ms, txs);
-            }        
+            }
         }else if (action === "Execute") {
             const {yes} = await basicConfirm(`Execute this transaction?`,false);
             if (yes) {
@@ -389,7 +389,7 @@ class Menu{
                     const updatedTx = await this.api.squads.getTransaction(tx.publicKey);
                     await continueInq();
                     this.transaction(updatedTx, ms, txs);
-                }                
+                }
 
             }else{
                 const updatedTx = await this.api.squads.getTransaction(tx.publicKey);
@@ -532,7 +532,7 @@ class Menu{
         const {memberKey} = await inquirer.prompt({choices, name: 'memberKey', type: 'list', message: `Which key do you want to remove?`});
         if (memberKey === "<- Go back") {
             this.settings(ms);
-        }else {            
+        }else {
             const {yes} = await basicConfirm(`Create transaction to remove ${memberKey}?`, false);
             if (yes) {
                 const status = new Spinner("Creating Remove Member Transaction...");
@@ -713,7 +713,7 @@ class Menu{
                 await continueInq();
                 this.top();
             }
-            
+
         }else{
             this.top();
         }
@@ -757,6 +757,84 @@ class Menu{
             this.nftBatchTransfer(ms);
         } else {
             this.multisig(ms);
+        }
+    }
+
+    validator = async (ms: any) => {
+        clear()
+        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+        this.header(vault);
+        const {action} = await validatorMainInq();
+        if (action === 0) {
+            this.validatorWithdrawAuthorityChange(ms);
+        } else {
+            this.multisig(ms);
+        }
+    }
+
+    validatorWithdrawAuthorityChange = async (ms: any) => {
+        clear();
+        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+        this.header(vault);
+        const {validatorId} = await validatorWithdrawAuthPrompt();
+        if (validatorId.length < 1) {
+            this.validator(ms);
+        }else{
+            const status = new Spinner('Fetching validator data...');
+            status.start();
+            try {
+                const withdrawAuthority = await this.api.getValidatorWithdrawAuth(new anchor.web3.PublicKey(validatorId));
+                if (!withdrawAuthority)
+                    throw Error("Not a validator")
+                console.log(chalk.blue("Current validator withdraw authority: ") + withdrawAuthority);
+                status.stop();
+                if (withdrawAuthority !== vault.toBase58()) {
+                    await inquirer.prompt({default: false, name: 'action', type: 'input', message: `The given validator withdraw auth is not in this squad - Enter to continue`});
+                    this.validator(ms);
+                }else{
+                    const {destination} = await validatorWithdrawAuthDestPrompt();
+                    if (destination.length < 1)
+                        this.validator(ms);
+                    else
+                        this.transferWithdrawAuthorityOut(ms, withdrawAuthority, validatorId, destination);
+                }
+            }catch(e){
+                console.log(e)
+                status.stop();
+                console.log('The key used is not a validator one');
+                await continueInq();
+                this.validator(ms);
+            }
+        }
+    }
+
+    transferWithdrawAuthorityOut = async (ms: any, withdrawAuthority: string, validatorId: string, destination: string) => {
+        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+        this.header(vault);
+        console.log(`This will create a transaction for the transfer of the validator (${validatorId}) withdraw authority out of the Squad vault`);
+        console.log("Validator Address: " + chalk.blue(`${validatorId}`));
+        console.log(`Withdraw Authority: ` + chalk.white(`${withdrawAuthority}`));
+        console.log(`New Withdraw Authority: ` + chalk.white(`${destination}`));
+        const {action} = await inquirer.prompt({default: false, name: 'action', type: 'confirm', message: `Continue?`});
+        if (action) {
+            const status = new Spinner('Creating transaction...');
+            status.start();
+            try {
+                const tx = await this.api.createTransferWithdrawAuthTx(ms.publicKey, new PublicKey(validatorId), new PublicKey(withdrawAuthority), new PublicKey(destination));
+                status.stop();
+                console.log(chalk.green("Transaction created!"));
+                console.log(chalk.blue("Transaction ID: ") + chalk.white(tx));
+                await continueInq();
+                this.multisig(ms);
+            }catch(e){
+                console.log(e);
+                status.stop();
+                console.log(`Transaction creation failed - Enter to continue`);
+                await continueInq();
+                this.validator(ms);
+            }
+        }else{
+            this.validator(ms);
         }
     }
 

@@ -9,7 +9,7 @@ import {idl} from "../info";
 import { ASSOCIATED_TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { Wallet } from "@coral-xyz/anchor";
-import { Connection, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
+import {Connection, LAMPORTS_PER_SOL, PublicKey, VoteProgram} from "@solana/web3.js";
 
 class API{
     squads;
@@ -93,6 +93,58 @@ class API{
     getProgramDataAuthority = async (programId: PublicKey) => {
         const program = await getProgramData(this.connection, programId);
         return program.info.authority;
+    };
+
+    getParsed = (account: anchor.web3.RpcResponseAndContext<anchor.web3.AccountInfo<Buffer | anchor.web3.ParsedAccountData> | null>) => {
+        const {value} = account;
+        if (value && value.data && 'parsed' in value.data) {
+            const { data: {parsed}} = value;
+            return parsed;
+        }
+        return null;
+    };
+    getValidatorWithdrawAuth = async (validatorAddress: anchor.web3.PublicKey) => {
+        try {
+            const parsedAccount = await this.connection.getParsedAccountInfo(validatorAddress) as any
+            const parsed = this.getParsed(parsedAccount)
+            if (parsed && parsed.type === "vote") {
+                return parsed.info.authorizedWithdrawer
+            }
+        } catch (e) {
+            return null
+        }
+        return null
+    }
+
+    createTransferWithdrawAuthTx = async (msPDA: PublicKey, validatorId: PublicKey, currentAuthority: PublicKey, newAuthorizedPubkey: PublicKey) => {
+        const nextTxIndex = await this.squads.getNextTransactionIndex(msPDA);
+        const [txPDA] = await getTxPDA(msPDA, new BN(nextTxIndex), this.programId);
+        const createTxIx = await this.squads.buildCreateTransaction(msPDA, 1, nextTxIndex);
+        const authorizeIx = VoteProgram.authorize({
+            authorizedPubkey: currentAuthority,
+            newAuthorizedPubkey,
+            voteAuthorizationType: { index: 1 },
+            votePubkey: validatorId,
+        }).instructions[0]
+
+        const addIx = await this.squads.buildAddInstruction(msPDA, txPDA, authorizeIx, 1);
+        const activateIx = await this.squads.buildActivateTransaction(msPDA, txPDA);
+        const approveIx = await this.squads.buildApproveTransaction(msPDA, txPDA);
+
+        const {blockhash, lastValidBlockHeight} = await this.connection.getLatestBlockhash();
+        let tx = new anchor.web3.Transaction({blockhash, lastValidBlockHeight, feePayer: this.wallet.publicKey});
+        tx.add(createTxIx);
+        tx.add(addIx);
+        tx.add(activateIx);
+        tx.add(approveIx);
+        console.log("Transaction composed")
+        tx = await this.wallet.signTransaction(tx);
+        console.log("Transaction signed")
+        console.log("Sending");
+        const sig = await this.connection.sendRawTransaction(tx.serialize(), {skipPreflight: true});
+        await this.connection.confirmTransaction(sig, "confirmed");
+        console.log("Transaction sent");
+        return txPDA;
     };
     
     createSafeAuthorityTx = async (msPDA: PublicKey, programId: PublicKey, currentAuthority: PublicKey, newAuthority: PublicKey) => {
