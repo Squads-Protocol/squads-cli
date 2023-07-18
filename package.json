@@ -1,6 +1,6 @@
 {
   "name": "@sqds/cli",
-  "version": "2.3.3",
+  "version": "2.3.5",
   "description": "",
   "main": "bin/index.js",
   "scripts": {
@@ -48,7 +48,7 @@
     "console.table": "^0.10.0",
     "figlet": "^1.5.2",
     "inquirer": "8.0.0",
-    "inquirer-press-to-continue": "^1.1.4",
+    "inquirer-press-to-continue": "1.1.4",
     "lodash": "^4.17.21",
     "minimist": "^1.2.6",
     "simple-git": "^3.10.0",
@@ -72,6 +72,8 @@
   },
   "resolutions": {
     "@solana/web3.js": "^1.66.2",
-    "@solana/spl-token": "^0.3.6"
+    "@solana/spl-token": "^0.3.6",
+    "inquirer": "8.0.0",
+    "inquirer-press-to-continue": "1.1.4"
   }
 }
