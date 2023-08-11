@@ -181,6 +181,14 @@ class API{
         return this.squads.executeInstruction(tx, ix);
     };
 
+    executeTransactionBuilder = async (tx: PublicKey) => {
+        return this.squads.buildExecuteTransaction(tx);
+    };
+
+    executeInstructionBuilder = async (tx: PublicKey, ix: PublicKey) => {
+        return this.squads.buildExecuteInstruction(tx, ix);
+    };
+
     approveTransaction = async (tx: PublicKey) => {
         return this.squads.approveTransaction(tx);
     }

@@ -361,18 +361,36 @@ class Menu{
                             const [ixPDA] = await getIxPDA(tx.publicKey, new anchor.BN(ixIndex), this.api.programId);
                             console.log("invoking instruction ", ixIndex);
                             try {
-                                await this.api.executeInstruction(tx.publicKey, ixPDA);
+                                const ix = await this.api.executeInstructionBuilder(tx.publicKey, ixPDA);
+                                const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
+                                const executeIxTx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.wallet.publicKey});
+                                executeIxTx.add(ix);
+                                const signed = await this.wallet.signTransaction(executeIxTx);
+                                const txid = await this.api.connection.sendRawTransaction(signed.serialize());
+                                await this.api.connection.confirmTransaction(txid, "processed");
                                 await this.api.squads.getTransaction(tx.publicKey)
                             }catch(e){
                                 console.log("Error executing instruction, trying it again");
                                 await this.api.squads.getTransaction(tx.publicKey);
-                                await this.api.executeInstruction(tx.publicKey, ixPDA);
+                                const ix = await this.api.executeInstructionBuilder(tx.publicKey, ixPDA);
+                                const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
+                                const executeIxTx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.wallet.publicKey});
+                                executeIxTx.add(ix);
+                                const signed = await this.wallet.signTransaction(executeIxTx);
+                                const txid = await this.api.connection.sendRawTransaction(signed.serialize());
+                                await this.api.connection.confirmTransaction(txid, "processed");
                             }
                             await this.api.squads.getTransaction(tx.publicKey);
                             successfullyExecuted++;
                         }
                     } else {
-                        await this.api.executeTransaction(tx.publicKey);
+                        const ix = await this.api.executeTransactionBuilder(tx.publicKey);
+                        const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
+                        const executeTx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.wallet.publicKey});
+                        executeTx.add(ix);
+                        const signed = await this.wallet.signTransaction(executeTx);
+                        const txid = await this.api.connection.sendRawTransaction(signed.serialize());
+                        await this.api.connection.confirmTransaction(txid, "processed");
                     }
                     status.stop();
                     const updatedTx = await this.api.squads.getTransaction(tx.publicKey);
