@@ -1,6 +1,6 @@
 import {
-    createUpdateMetadataAccountInstruction,
-    UpdateMetadataAccountInstructionArgs,
+    createUpdateMetadataAccountV2Instruction,
+    UpdateMetadataAccountV2InstructionArgs,
     PROGRAM_ID,
 
     SetAndVerifyCollectionInstructionAccounts, SetAndVerifyCollectionStruct, setAndVerifyCollectionInstructionDiscriminator,
@@ -13,14 +13,15 @@ export const updateMetadataAuthorityIx = (newAuthority: PublicKey, currentAuthor
         metadata: metadataAccount,
         updateAuthority: currentAuthority,
     };
-    const instructionArgs: UpdateMetadataAccountInstructionArgs = {
-        updateMetadataAccountArgs: {
+    const instructionArgs: UpdateMetadataAccountV2InstructionArgs = {
+        updateMetadataAccountArgsV2: {
             data: null,
             primarySaleHappened: null,
             updateAuthority: newAuthority,
+            isMutable: null
         },
     };
-    return createUpdateMetadataAccountInstruction(accounts, instructionArgs, PROGRAM_ID);
+    return createUpdateMetadataAccountV2Instruction(accounts, instructionArgs, PROGRAM_ID);
 };
 
 // export const setAndVerifyCollectionIx = (collection: PublicKey, authority: PublicKey, metadataAccount: PublicKey) => {
