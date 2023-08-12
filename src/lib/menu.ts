@@ -370,8 +370,8 @@ class Menu{
                                 const executeIxTx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.wallet.publicKey});
                                 executeIxTx.add(additionalComputeBudgetInstruction,ix);
                                 const signed = await this.wallet.signTransaction(executeIxTx);
-                                const txid = await this.api.connection.sendRawTransaction(signed.serialize());
-                                await this.api.connection.confirmTransaction(txid, "processed");
+                                const txid = await this.api.connection.sendRawTransaction(signed.serialize(), {skipPreflight: true});
+                                await this.api.connection.confirmTransaction(txid, "confirmed");
                                 await this.api.squads.getTransaction(tx.publicKey)
                             }catch(e){
                                 console.log("Error executing instruction, trying it again");
@@ -381,8 +381,8 @@ class Menu{
                                 const executeIxTx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.wallet.publicKey});
                                 executeIxTx.add(additionalComputeBudgetInstruction,ix);
                                 const signed = await this.wallet.signTransaction(executeIxTx);
-                                const txid = await this.api.connection.sendRawTransaction(signed.serialize());
-                                await this.api.connection.confirmTransaction(txid, "processed");
+                                const txid = await this.api.connection.sendRawTransaction(signed.serialize(), {skipPreflight: true});
+                                await this.api.connection.confirmTransaction(txid, "confirmed");
                             }
                             await this.api.squads.getTransaction(tx.publicKey);
                             successfullyExecuted++;

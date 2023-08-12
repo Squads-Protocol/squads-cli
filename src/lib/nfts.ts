@@ -197,6 +197,7 @@ export const createAuthorityUpdateTx = async (squadsSdk: Squads, multisig: Publi
     const queue = mints;
     let txState = await squadsSdk.createTransaction(multisig, 1);
     ws.write(`Created Transaction at PDA: ${txState.publicKey.toBase58()}\n`);
+    await squadsSdk.getTransaction(txState.publicKey);
     const batchLength = mints.length;
     ws.write(`Attaching ${batchLength} instructions for each metadata account\n`);
     let hasError = false;
@@ -223,6 +224,7 @@ export const createAuthorityUpdateTx = async (squadsSdk: Squads, multisig: Publi
             // flash tx state
             await squadsSdk.getTransaction(txState.publicKey);
         }catch (e) {
+            ws.write(`Failed to attach ix: ${e}\n`);
             attachFails.push(mint);
         }
     }
@@ -434,9 +436,7 @@ export const sendTxMetaIx = async (msPDA: PublicKey, txPDA: PublicKey, member: P
 
 // rough calculation of how much SOL the process will take
 export const estimateBulkUpdate = async (sdk: Squads, connection: Connection, buckets: PublicKey[][], testKey: PublicKey) => {
-    const numTx = buckets.length;
     // iterate through each bucket, and create a transaction, then create an instruction for each item in each bucket
-    const {blockhash, lastValidBlockHeight} = await connection.getLatestBlockhash();
     let ixBytes = 0;
     const metaIx = await updateMetadataAuthorityIx(testKey, testKey, testKey);
     const testIx = await sdk.buildAddInstruction(testKey, testKey, metaIx, 0);
