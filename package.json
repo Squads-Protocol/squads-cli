@@ -1,6 +1,6 @@
 {
   "name": "@sqds/cli",
-  "version": "2.3.13",
+  "version": "2.3.14",
   "description": "",
   "main": "bin/index.js",
   "scripts": {
