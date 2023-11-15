@@ -9,6 +9,7 @@ import SetupWallet from "./lib/inq/walletPath.js";
 import SetupCluster from "./lib/inq/cluster.js";
 import yargs from 'yargs';
 import {hideBin} from 'yargs/helpers'
+import {parseLedgerWallet} from "@marinade.finance/ledger-utils";
 
 const VERSION = "2.1.3";
 
@@ -19,12 +20,12 @@ const argv = yargs(hideBin(process.argv)).options({
     txMetaProgramId: { type: 'string'},
   }).parseSync();
 
-// console.log(pjson.version);
 const load = async (initCluster?: string, programId?: string, programManagerId?: string, txMetaProgramId?: string) => {
     clear();
     console.log(chalk.yellow('Starting Squads CLI...') + " Follow the prompts to get started")
     const {walletPath} = await SetupWallet();
-    const cliWallet = new CliWallet(walletPath);
+    const ledgerWallet = await parseLedgerWallet(walletPath)
+    const cliWallet = new CliWallet(walletPath, ledgerWallet);
     let cliConnection;
     if(!initCluster){
         const {cluster} = await SetupCluster();

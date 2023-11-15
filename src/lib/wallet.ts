@@ -1,9 +1,6 @@
 import os from "os";
 import fs from "fs";
 import * as anchor from "@coral-xyz/anchor";
-import Wallet from "@coral-xyz/anchor";
-import _ from "lodash";
-// const filelist = _.without(fs.readdirSync('.'), '.git', '.gitignore');
 
 const homedir = os.homedir();
 const defaultWalletPath = `${homedir}/.config/solana/id.json`;
@@ -12,12 +9,15 @@ class CliWallet {
     walletPath: string;
     wallet: anchor.Wallet;
 
-    constructor(walletInitPath?: string){
+    constructor(walletInitPath?: string, ledgerWallet?: any | null) {
         this.walletPath = defaultWalletPath;
-        if(walletInitPath && walletInitPath.length > 0){
+        if (walletInitPath && walletInitPath.length > 0) {
             this.walletPath = walletInitPath;
         }
-        this.wallet = this.loadCliWallet();
+        if (ledgerWallet)
+            this.wallet = ledgerWallet
+        else
+            this.wallet = this.loadCliWallet();
     }
 
     loadCliWallet(){

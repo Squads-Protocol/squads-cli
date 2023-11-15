@@ -1,6 +1,6 @@
 {
   "name": "@sqds/cli",
-  "version": "2.3.12",
+  "version": "2.3.13",
   "description": "",
   "main": "bin/index.js",
   "scripts": {
@@ -24,6 +24,13 @@
   "license": "AGPL-3.0-or-later",
   "dependencies": {
     "@coral-xyz/anchor": "^0.26.0",
+    "@ledgerhq/errors": "^6.15.0",
+    "@ledgerhq/hw-app-solana": "^7.0.14",
+    "@ledgerhq/hw-transport-node-hid-noevents": "^6.28.0",
+    "@marinade.finance/cli-common": "^2.0.18",
+    "@marinade.finance/ledger-utils": "^2.0.18",
+    "@marinade.finance/ts-common": "^2.0.18",
+    "@marinade.finance/web3js-common": "^2.0.18",
     "@metaplex-foundation/js": "^0.18.3",
     "@metaplex-foundation/mpl-token-metadata": "^2.13.0",
     "@metaplex/js": "^4.12.0",
@@ -73,7 +80,6 @@
   "resolutions": {
     "@solana/web3.js": "^1.66.2",
     "@solana/spl-token": "^0.3.6",
-    "inquirer": "8.0.0",
     "inquirer-press-to-continue": "1.1.4"
   }
 }
