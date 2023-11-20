@@ -280,6 +280,8 @@ class Menu{
                             await this.api.addInstruction(tx.publicKey, ix);
                             status2.stop();
                         }
+                        await this.api.activate(tx.publicKey)
+                        await this.api.approveTransaction(tx.publicKey)
                         console.log("Transaction created!");
                         // console.log("Transaction key: " + chalk.blue(tx.publicKey.toBase58()));
                         await continueInq();
