@@ -635,6 +635,7 @@ class Menu{
 
     program = async (ms: any) => {
         this.header();
+        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
         const {programId} = await promptProgramId();
         if (programId.length < 1) {
             this.multisig(ms);
@@ -645,11 +646,14 @@ class Menu{
                 const programAuthority = await this.api.getProgramDataAuthority(new anchor.web3.PublicKey(programId));
                 chalk.blue("Current program data authority: " + programAuthority);
                 status.stop();
-                if (programAuthority !== this.wallet.publicKey.toBase58()) {
-                    await inquirer.prompt({default: false, name: 'action', type: 'input', message: `Connected wallet does not have authority over this program - Enter to continue`});
-                    this.program(ms);
-                }else{
+                if (programAuthority === this.wallet.publicKey.toBase58()) {
                     this.programAuthority(ms, programAuthority, programId);
+                }
+                if (programAuthority === vault.toBase58()) {
+                    this.programAuthorityOut(ms, programAuthority, programId);
+                }else{
+                    await inquirer.prompt({default: false, name: 'action', type: 'input', message: `Neither the connected wallet nor this Squad have authority over this program - Enter to continue`});
+                    this.program(ms);
                 }
             }catch(e){
                 console.log(e);
@@ -675,6 +679,37 @@ class Menu{
             status.start();
             try {
                 const tx = await this.api.createSafeAuthorityTx(ms.publicKey, new PublicKey(programId), new PublicKey(currentAuthority), vault);
+                status.stop();
+                console.log(chalk.green("Transaction created!"));
+                console.log(chalk.blue("Transaction ID: ") + chalk.white(tx));
+                await continueInq();
+                this.multisig(ms);
+            }catch(e){
+                console.log(e);
+                status.stop();
+                console.log(`Transaction creation failed - Enter to continue`);
+                await continueInq();
+                this.program(ms);
+            }
+        }else{
+            this.program(ms);
+        }
+    }
+
+    programAuthorityOut = async (ms: any, currentAuthority: PublicKey, programId: string) => {
+        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+        this.header(vault);
+        console.log(`This will create a safe upgrade authority transfer transaction of ${programId} out of the Squad vault`);
+        console.log("Program Address: " + chalk.blue(`${programId}`));
+        console.log(`Multisig Address: ` + chalk.white(`${ms.publicKey.toBase58()}`));
+        console.log(`Current Program Authority: ` + chalk.white(`${currentAuthority}`));
+        console.log(`New Program Upgrade Authority: ` + chalk.green(this.wallet.publicKey.toBase58()) + chalk.white(` (Your connected wallet)`));
+        const {action} = await inquirer.prompt({default: false, name: 'action', type: 'confirm', message: `Continue?`});
+        if (action) {
+            const status = new Spinner('Creating transaction...');
+            status.start();
+            try {
+                const tx = await this.api.createSafeAuthorityTx(ms.publicKey, new PublicKey(programId), new PublicKey(currentAuthority), this.wallet.publicKey);
                 status.stop();
                 console.log(chalk.green("Transaction created!"));
                 console.log(chalk.blue("Transaction ID: ") + chalk.white(tx));
