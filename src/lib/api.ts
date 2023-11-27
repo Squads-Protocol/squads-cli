@@ -192,6 +192,14 @@ class API{
     approveTransaction = async (tx: PublicKey) => {
         return this.squads.approveTransaction(tx);
     }
+
+    rejectTransaction = async (tx: PublicKey) => {
+        return this.squads.rejectTransaction(tx);
+    }
+
+    cancelTransaction = async (tx: PublicKey) => {
+        return this.squads.cancelTransaction(tx);
+    }
     
     addKeyTransaction = async (msPDA: PublicKey, key: PublicKey) => {
         const txBuilder = await this.squads.getTransactionBuilder(msPDA, 0);

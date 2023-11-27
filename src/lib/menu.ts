@@ -479,6 +479,52 @@ class Menu{
                 this.transaction(tx, ms, txs);
             }
         }
+        else if (action === "Reject") {
+            const {yes} = await basicConfirm(`Reject this transaction?`,false);
+            if (yes) {
+                const status = new Spinner("Rejecting transaction...");
+                status.start();
+                try {
+                    const updatedTx = await this.api.rejectTransaction(tx.publicKey);
+                    status.stop();
+                    const newInd = txs.findIndex(t => t.publicKey.toBase58() === updatedTx.publicKey.toBase58());
+                    txs.splice(newInd, 1, updatedTx);
+                    console.log("Transaction rejected");
+                    await continueInq();
+                    this.transaction(updatedTx, ms, txs);
+                }catch(e){
+                    status.stop();
+                    console.log("Error!", e);
+                    await continueInq();
+                    this.transaction(tx, ms, txs);
+                }
+            }else{
+                this.transaction(tx, ms, txs);
+            }
+        }
+        else if (action === "Submit to cancel") {
+            const {yes} = await basicConfirm(`Cancel this transaction?`,false);
+            if (yes) {
+                const status = new Spinner("Cancelling transaction...");
+                status.start();
+                try {
+                    const updatedTx = await this.api.cancelTransaction(tx.publicKey);
+                    status.stop();
+                    const newInd = txs.findIndex(t => t.publicKey.toBase58() === updatedTx.publicKey.toBase58());
+                    txs.splice(newInd, 1, updatedTx);
+                    console.log("Transaction cancel submitted");
+                    await continueInq();
+                    this.transaction(updatedTx, ms, txs);
+                }catch(e){
+                    status.stop();
+                    console.log("Error!", e);
+                    await continueInq();
+                    this.transaction(tx, ms, txs);
+                }
+            }else{
+                this.transaction(tx, ms, txs);
+            }
+        }
         else{
             this.transaction(tx, ms, txs);
         }
