@@ -53,12 +53,12 @@ class API{
 
     getTransactions = async (ms: any) => {
         const txIndex = ms.transactionIndex;
-        const transactions = await Promise.all([...new Array(txIndex)].map(async (_, i) => {
+        const txsPDA = [...new Array(txIndex)].map( (_, i) => {
             const ind = new BN(i+1);
-            const [txPDA] = await getTxPDA(ms.publicKey, ind, this.programId);
-            return this.squads.getTransaction(txPDA);
-        }));
-        return transactions;
+            const [txPDA] =  getTxPDA(ms.publicKey, ind, this.programId);
+            return txPDA;
+        })
+        return this.squads.getTransactions(txsPDA)
     }
     
     createMultisig = async (threshold: number, createKey: PublicKey,members: PublicKey[]) => {
