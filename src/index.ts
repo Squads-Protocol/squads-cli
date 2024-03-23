@@ -20,12 +20,18 @@ const argv = yargs(hideBin(process.argv)).options({
     txMetaProgramId: { type: 'string'},
   }).parseSync();
 
-const load = async (initCluster?: string, programId?: string, programManagerId?: string, txMetaProgramId?: string) => {
+const load = async (
+    initCluster?: string,
+    programId?: string,
+    programManagerId?: string,
+    txMetaProgramId?: string,
+    computeUnitPrice?: number,
+) => {
     clear();
     console.log(chalk.yellow('Starting Squads CLI...') + " Follow the prompts to get started")
     const {walletPath} = await SetupWallet();
     const ledgerWallet = await parseLedgerWallet(walletPath)
-    const cliWallet = new CliWallet(walletPath, ledgerWallet);
+    const cliWallet = new CliWallet(walletPath, ledgerWallet, computeUnitPrice);
     let cliConnection;
     if(!initCluster){
         const {cluster} = await SetupCluster();
@@ -49,6 +55,7 @@ let cluster;
 let programId;
 let programManagerId;
 let txMetaProgramId;
+let computeUnitPrice;
 if (argv.cluster && argv.cluster.length > 0){
     cluster = argv.cluster;
 }
@@ -61,6 +68,9 @@ if (argv.programManagerId && argv.programManagerId.length > 0){
 if (argv.txMetaProgramId && argv.txMetaProgramId.length > 0) {
     txMetaProgramId = argv.txMetaProgramId;
 }
+if (typeof argv.computeUnitPrice == "number") {
+    computeUnitPrice = argv.computeUnitPrice;
+}
 
 if (argv.help){
     help();
@@ -68,5 +78,5 @@ if (argv.help){
     console.log(VERSION);
 }else {
     clear();
-    load(cluster, programId, programManagerId, txMetaProgramId);
+    load(cluster, programId, programManagerId, txMetaProgramId, computeUnitPrice);
 }
