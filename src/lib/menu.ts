@@ -373,6 +373,7 @@ class Menu{
                                 executeIxTx.add(additionalComputeBudgetInstruction,ix);
                                 const signed = await this.wallet.signTransaction(executeIxTx);
                                 const txid = await this.api.connection.sendRawTransaction(signed.serialize(), {skipPreflight: true});
+                                console.log(`ix ${ixIndex} signature: ${txid}`);
                                 await this.api.connection.confirmTransaction(txid, "confirmed");
                                 await this.api.squads.getTransaction(tx.publicKey)
                             }catch(e){
@@ -384,6 +385,7 @@ class Menu{
                                 executeIxTx.add(additionalComputeBudgetInstruction,ix);
                                 const signed = await this.wallet.signTransaction(executeIxTx);
                                 const txid = await this.api.connection.sendRawTransaction(signed.serialize(), {skipPreflight: true});
+                                console.log(`ix ${ixIndex} retry signature: ${txid}`);
                                 await this.api.connection.confirmTransaction(txid, "confirmed");
                             }
                             await this.api.squads.getTransaction(tx.publicKey);
