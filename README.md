@@ -15,9 +15,12 @@ Nodejs version >= 16
 `npm install -g @sqds/cli`
 
 ### Running the tool
-Running the simple command will start the tool and ask a few setup questions for the wallet and the network cluster.\
-`squads-cli`
+Run `squads-cli` to start the tool; it will prompt for wallet path and cluster (unless you pass flags below).
 
-### Cluster Option
-Providing the cluster will bypass the question upon startup\
+### Cluster option
+Pass a cluster RPC URL to skip the cluster prompt:
+
 `squads-cli --cluster https://api.mainnet-beta.solana.com`
+
+### Optional flags
+Run `squads-cli --help` for the exact names. Useful options include `--computeUnitPrice` (priority fee in micro-lamports) and `--programId` / `--programManagerId` / `--txMetaProgramId` when you need to override program IDs.

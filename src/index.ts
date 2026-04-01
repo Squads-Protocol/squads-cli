@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import clear from 'clear';
 import chalk from 'chalk';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 import Menu from "./lib/menu.js";
 import CliWallet from './lib/wallet.js';
@@ -11,13 +13,19 @@ import yargs from 'yargs';
 import {hideBin} from 'yargs/helpers'
 import {parseLedgerWallet} from "@marinade.finance/ledger-utils";
 
-const VERSION = "2.1.3";
+const { version: cliVersion } = JSON.parse(
+    readFileSync(join(__dirname, '../package.json'), 'utf-8'),
+) as { version: string };
 
 const argv = yargs(hideBin(process.argv)).options({
     cluster: { type: 'string'},
     programId: { type: 'string'},
     programManagerId: { type: 'string'},
     txMetaProgramId: { type: 'string'},
+    computeUnitPrice: {
+        type: 'number',
+        describe: 'Optional priority fee in micro-lamports (ComputeBudget setComputeUnitPrice)',
+    },
   }).parseSync();
 
 const load = async (
@@ -75,7 +83,7 @@ if (typeof argv.computeUnitPrice == "number") {
 if (argv.help){
     help();
 }else if (argv.version || argv.v){
-    console.log(VERSION);
+    console.log(cliVersion);
 }else {
     clear();
     load(cluster, programId, programManagerId, txMetaProgramId, computeUnitPrice);

@@ -4,12 +4,31 @@ import * as anchor from "@coral-xyz/anchor";
 import BN from "bn.js";
 import { getProgramData, upgradeSetAuthorityIx } from "./program.js";
 import { getAssets } from "./assets.js";
-import {getAssociatedTokenAddress,createAssociatedTokenAccountInstruction} from "@solana/spl-token";
 import {idl} from "../info";
-import { ASSOCIATED_TOKEN_PROGRAM_ID } from "@solana/spl-token";
-import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { Wallet } from "@coral-xyz/anchor";
-import {Connection, LAMPORTS_PER_SOL, PublicKey, VoteProgram} from "@solana/web3.js";
+import {Connection, LAMPORTS_PER_SOL, PublicKey, TransactionInstruction, VoteProgram} from "@solana/web3.js";
+
+type SplTokenModule = {
+    getAssociatedTokenAddress: (
+        mint: PublicKey,
+        owner: PublicKey,
+        allowOwnerOffCurve?: boolean,
+        programId?: PublicKey,
+        associatedTokenProgramId?: PublicKey
+    ) => Promise<PublicKey>;
+    createAssociatedTokenAccountInstruction: (
+        payer: PublicKey,
+        associatedToken: PublicKey,
+        owner: PublicKey,
+        mint: PublicKey,
+        programId?: PublicKey,
+        associatedTokenProgramId?: PublicKey
+    ) => TransactionInstruction;
+    TOKEN_PROGRAM_ID: PublicKey;
+    ASSOCIATED_TOKEN_PROGRAM_ID: PublicKey;
+};
+
+const splToken = require("@solana/spl-token") as SplTokenModule;
 
 class API{
     squads;
@@ -311,14 +330,20 @@ class API{
     }
 
     async createATA(mint: PublicKey, owner: PublicKey){
-        const ataPubkey = await getAssociatedTokenAddress(mint,owner,true,TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID)
-        const createATAIx = await createAssociatedTokenAccountInstruction(
+        const ataPubkey = await splToken.getAssociatedTokenAddress(
+            mint,
+            owner,
+            true,
+            splToken.TOKEN_PROGRAM_ID,
+            splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
+        );
+        const createATAIx = splToken.createAssociatedTokenAccountInstruction(
             this.wallet.publicKey,
             ataPubkey,
             owner,
             mint,
-            TOKEN_PROGRAM_ID,
-            ASSOCIATED_TOKEN_PROGRAM_ID,
+            splToken.TOKEN_PROGRAM_ID,
+            splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
         );
 
         const {blockhash, lastValidBlockHeight} = await this.connection.getLatestBlockhash();
