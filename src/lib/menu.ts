@@ -372,6 +372,7 @@ class Menu{
                 const updatedTx = await this.api.squads.getTransaction(tx.publicKey);
                 return () => this.transaction(updatedTx, ms, txs);
             }
+            await this.api.warnIfLowBalance();
             const status = new Spinner("Executing transaction...");
             status.start();
             let successfullyExecuted = 0;
@@ -871,6 +872,7 @@ class Menu{
             }
         }
         if (continueProcessing) {
+            await this.api.warnIfLowBalance();
             await continueInq();
             console.log("Transfering metadata update authority to the vault, this may take some time depending on the number of mints and your internet connection speed.");
             const status = new Spinner("Updating authority of the metadata accounts...");
@@ -979,6 +981,7 @@ class Menu{
         }
         if (continueProcessing) {
             const {safeSign} = await nftSafeSigningInq();
+            await this.api.warnIfLowBalance();
             const successfullyStagedMetas: PublicKey[] = [];
             console.log("Creating the multisig transactions, this may take some time depending on the number of mints and your internet connection speed.");
             const status = new Spinner("Initializing metadata authority update multisig transactions...");
@@ -1117,6 +1120,7 @@ class Menu{
                 }
             }
             if (continueProcessing) {
+                await this.api.warnIfLowBalance();
                 const successfullyStagedMetas: PublicKey[] = [];
                 console.log("Creating the multisig transactions, this may take some time depending on the number of mints and your internet connection speed.");
                 const status = new Spinner("Initializing NFTs transfer multisig transactions...");

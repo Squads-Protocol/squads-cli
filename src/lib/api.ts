@@ -1,6 +1,7 @@
 import Squads, { getTxPDA, getAuthorityPDA } from "@sqds/sdk";
 import * as anchor from "@coral-xyz/anchor";
 import BN from "bn.js";
+import chalk from "chalk";
 import { getProgramData, upgradeSetAuthorityIx } from "./program.js";
 import { getAssets } from "./assets.js";
 import {getAssociatedTokenAddress,createAssociatedTokenAccountInstruction} from "@solana/spl-token";
@@ -10,6 +11,19 @@ import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import {Connection, LAMPORTS_PER_SOL, PublicKey, VoteProgram} from "@solana/web3.js";
 import type CliConnection from "./connection.js";
 import type { AnchorWallet, MultisigAccount, SquadsTxBuilder, TransactionAccount } from "../types.js";
+
+// Below this balance, warn the user that the fee-paying wallet may not have
+// enough SOL to cover the next tx's fees + rent. Heuristic, not a hard floor.
+export const LOW_BALANCE_SOL = 0.1;
+
+// Match the various ways Solana surfaces insufficient-funds errors:
+//  - "Attempt to debit an account but found no record of a prior credit"
+//  - "insufficient funds"
+//  - InstructionError on the system program with Custom: 1
+const looksLikeInsufficientFunds = (e: unknown): boolean => {
+    const msg = e instanceof Error ? e.message : JSON.stringify(e);
+    return /insufficient|debit an account but found no record/i.test(msg);
+};
 
 class API{
     squads;
@@ -31,20 +45,40 @@ class API{
         this.program = new anchor.Program(idl as anchor.Idl, this.programId, this.provider);
     }
 
+    // Logs a yellow warning when the fee-paying wallet is below LOW_BALANCE_SOL.
+    // Returns the current balance so callers can include it in their own messages.
+    warnIfLowBalance = async (): Promise<number> => {
+        const balance = await this.getWalletBalance();
+        if (balance < LOW_BALANCE_SOL) {
+            console.log(chalk.yellow(
+                `\nWarning: fee-paying wallet ${this.wallet.publicKey.toBase58()} has ${balance.toFixed(4)} SOL (below ${LOW_BALANCE_SOL} SOL). Transaction may fail to cover fees/rent.`,
+            ));
+        }
+        return balance;
+    };
+
     private sendAndConfirm = async (
         ixes: anchor.web3.TransactionInstruction[],
         opts: { confirm?: boolean } = {},
     ): Promise<string> => {
         const { confirm = true } = opts;
+        const balance = await this.warnIfLowBalance();
         const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
         const tx = new anchor.web3.Transaction({ blockhash, lastValidBlockHeight, feePayer: this.wallet.publicKey });
         tx.add(...ixes);
         const signed = await this.wallet.signTransaction(tx);
-        const sig = await this.connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
-        if (confirm) {
-            await this.connection.confirmTransaction(sig, "confirmed");
+        try {
+            const sig = await this.connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
+            if (confirm) {
+                await this.connection.confirmTransaction(sig, "confirmed");
+            }
+            return sig;
+        } catch (e) {
+            if (looksLikeInsufficientFunds(e)) {
+                throw new Error(`Transaction failed: wallet ${this.wallet.publicKey.toBase58()} has insufficient SOL (current: ${balance.toFixed(4)} SOL).`);
+            }
+            throw e;
         }
-        return sig;
     };
 
     // Builder-driven multisig config changes (auth index 0): add/remove member, change threshold.
