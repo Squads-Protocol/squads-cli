@@ -86,6 +86,13 @@ class API{
     getSquadExtended = async (ms: PublicKey) => {
         return this.squads.getMultisig(ms);
     };
+
+    getAuthority = async (msPDA: PublicKey, authorityIndex: number = 1): Promise<PublicKey> => {
+        const [pda] = await getAuthorityPDA(msPDA, new BN(authorityIndex), this.programId);
+        return pda;
+    };
+
+    getVault = (msPDA: PublicKey): Promise<PublicKey> => this.getAuthority(msPDA, 1);
     
     getSquads = async (pubkey: PublicKey) => {
         const allSquads = await this.program.account.ms.all();
@@ -117,8 +124,7 @@ class API{
         const tx = await this.squads.createMultisig(threshold,createKey,members);
         // try to fund the PDA
         try {
-            const msPDA = tx.publicKey;
-            const [vault] = await getAuthorityPDA(msPDA, new BN(1), this.programId);
+            const vault = await this.getVault(tx.publicKey);
             const fundIx = anchor.web3.SystemProgram.transfer({
                 fromPubkey: this.wallet.publicKey,
                 toPubkey: vault,

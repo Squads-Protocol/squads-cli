@@ -8,7 +8,7 @@ import "console.table";
 import * as fs from 'fs';
 import path from 'path';
 
-import { getAuthorityPDA, DEFAULT_MULTISIG_PROGRAM_ID, DEFAULT_PROGRAM_MANAGER_PROGRAM_ID, getIxPDA } from '@sqds/sdk';
+import { DEFAULT_MULTISIG_PROGRAM_ID, DEFAULT_PROGRAM_MANAGER_PROGRAM_ID, getIxPDA } from '@sqds/sdk';
 import { TXMETA_PROGRAM_ID } from './constants.js';
 import BN from 'bn.js';
 import {ComputeBudgetProgram, PublicKey, Transaction} from '@solana/web3.js';
@@ -123,7 +123,7 @@ class Menu{
     multisigList = async () => {
         const loadAuthorities = async (ms: any[]) => {
             return Promise.all(ms.map(async (msObj,i) => {
-                const [mAuth] = await getAuthorityPDA(msObj.publicKey, new BN(1), this.api.programId);
+                const mAuth = await this.api.getVault(msObj.publicKey);
                 return {
                     value: i,
                     name: `${mAuth.toBase58()} (${shortenTextEnd(msObj.publicKey.toBase58(),6)})`,
@@ -159,7 +159,7 @@ class Menu{
     };
 
     multisig = async (ms: any) => {
-        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+        const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         console.log("Info");
         console.log("-----------------------------------------------------------");
@@ -171,7 +171,7 @@ class Menu{
             // load vault assets
             let status = new Spinner("Loading vault");
             status.start();
-            const [vaultPDA] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+            const vaultPDA = await this.api.getVault(ms.publicKey);
             const vault = await this.api.getVaultAssets(vaultPDA);
             status.stop();
             this.vault(ms,vaultPDA, vault);
@@ -207,7 +207,7 @@ class Menu{
     };
 
     transactions = async (txs: any[], ms: any) => {
-        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+        const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         const {action} = await transactionsMenu(txs, this.wallet.publicKey);
         if(action === "<- Go back") {
@@ -230,8 +230,7 @@ class Menu{
 
         if(assemble.indexOf("Assemble") == 0){
             const {authority} = await createTransactionInq();
-            const authorityBN = new BN(authority, 10);
-            const [authorityPDA] = await getAuthorityPDA(ms.publicKey, authorityBN, this.api.programId);
+            const authorityPDA = await this.api.getAuthority(ms.publicKey, parseInt(authority, 10));
 
             const status = new Spinner("Creating transaction...");
             console.log("This will create a new transaction draft for authority " + chalk.blue(authorityPDA.toBase58()));
@@ -250,8 +249,7 @@ class Menu{
             }
         }else if(assemble.indexOf("Enter") == 0) {
             const {authority} = await createTransactionInq();
-            const authorityBN = new BN(authority, 10);
-            const [authorityPDA] = await getAuthorityPDA(ms.publicKey, authorityBN, this.api.programId);
+            const authorityPDA = await this.api.getAuthority(ms.publicKey, parseInt(authority, 10));
 
             const {rawIx} = await addTransactionInq();
             if (rawIx.length > 1) {
@@ -305,10 +303,39 @@ class Menu{
         }
     };
 
+    // Run a confirm → spinner → api call → splice-and-recurse flow for tx status changes
+    // (approve/activate/reject/cancel). Errors and the "no" path both recurse with the original tx.
+    private runTxAction = async (
+        tx: any, ms: any, txs: any[],
+        apiFn: (txPubkey: PublicKey) => Promise<any>,
+        msgs: { confirm: string; spinner: string; success: string },
+    ) => {
+        const {yes} = await basicConfirm(msgs.confirm, false);
+        if (!yes) {
+            return this.transaction(tx, ms, txs);
+        }
+        const status = new Spinner(msgs.spinner);
+        status.start();
+        try {
+            const updatedTx = await apiFn(tx.publicKey);
+            status.stop();
+            const newInd = txs.findIndex(t => t.publicKey.toBase58() === updatedTx.publicKey.toBase58());
+            txs.splice(newInd, 1, updatedTx);
+            console.log(msgs.success);
+            await continueInq();
+            this.transaction(updatedTx, ms, txs);
+        } catch(e) {
+            status.stop();
+            console.log("Error!", e);
+            await continueInq();
+            this.transaction(tx, ms, txs);
+        }
+    };
+
     transaction = async (tx: any, ms: any, txs: any[]) => {
-        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+        const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
-        const [authority] = await getAuthorityPDA(ms.publicKey, new BN(tx.authorityIndex,10), this.api.programId);
+        const authority = await this.api.getAuthority(ms.publicKey, parseInt(tx.authorityIndex, 10));
         const txData = [
             {
                 status: Object.keys(tx.status)[0],
@@ -330,27 +357,11 @@ class Menu{
         if(action === "<- Go back") {
             this.transactions(txs, ms);
         }else if (action === "Approve") {
-            const {yes} = await basicConfirm(`Approve this transaction?`,false);
-            if (yes) {
-                const status = new Spinner("Approving transaction...");
-                status.start();
-                try {
-                    const updatedTx = await this.api.approveTransaction(tx.publicKey);
-                    status.stop();
-                    const newInd = txs.findIndex(t => t.publicKey.toBase58() === updatedTx.publicKey.toBase58());
-                    txs.splice(newInd, 1, updatedTx);
-                    console.log("Transaction approved");
-                    await continueInq();
-                    this.transaction(updatedTx, ms, txs);
-                }catch(e){
-                    status.stop();
-                    console.log("Error!", e);
-                    await continueInq();
-                    this.transaction(tx, ms, txs);
-                }
-            }else{
-                this.transaction(tx, ms, txs);
-            }
+            await this.runTxAction(tx, ms, txs, t => this.api.approveTransaction(t), {
+                confirm: "Approve this transaction?",
+                spinner: "Approving transaction...",
+                success: "Transaction approved",
+            });
         }else if (action === "Execute") {
             const {yes} = await basicConfirm(`Execute this transaction?`,false);
             if (yes) {
@@ -459,73 +470,25 @@ class Menu{
             }
         }
         else if (action === "Activate") {
-            const {yes} = await basicConfirm(`Activate this transaction?`,false);
-            if (yes) {
-                const status = new Spinner("Activating transaction...");
-                status.start();
-                try {
-                    const updatedTx = await this.api.activate(tx.publicKey);
-                    status.stop();
-                    const newInd = txs.findIndex(t => t.publicKey.toBase58() === updatedTx.publicKey.toBase58());
-                    txs.splice(newInd, 1, updatedTx);
-                    console.log("Activated Transaction");
-                    await continueInq();
-                    this.transaction(updatedTx, ms, txs);
-                }catch(e){
-                    status.stop();
-                    console.log("Error!", e);
-                    await continueInq();
-                    this.transaction(tx, ms, txs);
-                }
-            }else{
-                this.transaction(tx, ms, txs);
-            }
+            await this.runTxAction(tx, ms, txs, t => this.api.activate(t), {
+                confirm: "Activate this transaction?",
+                spinner: "Activating transaction...",
+                success: "Activated Transaction",
+            });
         }
         else if (action === "Reject") {
-            const {yes} = await basicConfirm(`Reject this transaction?`,false);
-            if (yes) {
-                const status = new Spinner("Rejecting transaction...");
-                status.start();
-                try {
-                    const updatedTx = await this.api.rejectTransaction(tx.publicKey);
-                    status.stop();
-                    const newInd = txs.findIndex(t => t.publicKey.toBase58() === updatedTx.publicKey.toBase58());
-                    txs.splice(newInd, 1, updatedTx);
-                    console.log("Transaction rejected");
-                    await continueInq();
-                    this.transaction(updatedTx, ms, txs);
-                }catch(e){
-                    status.stop();
-                    console.log("Error!", e);
-                    await continueInq();
-                    this.transaction(tx, ms, txs);
-                }
-            }else{
-                this.transaction(tx, ms, txs);
-            }
+            await this.runTxAction(tx, ms, txs, t => this.api.rejectTransaction(t), {
+                confirm: "Reject this transaction?",
+                spinner: "Rejecting transaction...",
+                success: "Transaction rejected",
+            });
         }
         else if (action === "Submit to cancel") {
-            const {yes} = await basicConfirm(`Cancel this transaction?`,false);
-            if (yes) {
-                const status = new Spinner("Cancelling transaction...");
-                status.start();
-                try {
-                    const updatedTx = await this.api.cancelTransaction(tx.publicKey);
-                    status.stop();
-                    const newInd = txs.findIndex(t => t.publicKey.toBase58() === updatedTx.publicKey.toBase58());
-                    txs.splice(newInd, 1, updatedTx);
-                    console.log("Transaction cancel submitted");
-                    await continueInq();
-                    this.transaction(updatedTx, ms, txs);
-                }catch(e){
-                    status.stop();
-                    console.log("Error!", e);
-                    await continueInq();
-                    this.transaction(tx, ms, txs);
-                }
-            }else{
-                this.transaction(tx, ms, txs);
-            }
+            await this.runTxAction(tx, ms, txs, t => this.api.cancelTransaction(t), {
+                confirm: "Cancel this transaction?",
+                spinner: "Cancelling transaction...",
+                success: "Transaction cancel submitted",
+            });
         }
         else{
             this.transaction(tx, ms, txs);
@@ -545,7 +508,7 @@ class Menu{
     }
 
     settings = async (ms: any) => {
-        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1,10), this.api.programId);
+        const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         const owners = ms.keys.map((m: PublicKey) => {
             return  m.toBase58();
@@ -685,7 +648,7 @@ class Menu{
 
     program = async (ms: any) => {
         this.header();
-        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+        const vault = await this.api.getVault(ms.publicKey);
         const {programId} = await promptProgramId();
         if (programId.length < 1) {
             this.multisig(ms);
@@ -697,11 +660,18 @@ class Menu{
                 chalk.blue("Current program data authority: " + programAuthority);
                 status.stop();
                 if (programAuthority === this.wallet.publicKey.toBase58()) {
-                    this.programAuthority(ms, programAuthority, programId);
-                }
-                if (programAuthority === vault.toBase58()) {
-                    this.programAuthorityOut(ms, programAuthority, programId);
-                }else{
+                    this.programAuthorityChange(ms, programAuthority, programId, {
+                        key: vault,
+                        label: "Vault - authority index 1",
+                        direction: "to",
+                    });
+                } else if (programAuthority === vault.toBase58()) {
+                    this.programAuthorityChange(ms, programAuthority, programId, {
+                        key: this.wallet.publicKey,
+                        label: "Your connected wallet",
+                        direction: "out of",
+                    });
+                } else {
                     await inquirer.prompt({default: false, name: 'action', type: 'input', message: `Neither the connected wallet nor this Squad have authority over this program - Enter to continue`});
                     this.program(ms);
                 }
@@ -715,67 +685,40 @@ class Menu{
         }
     }
 
-    programAuthority = async (ms: any, currentAuthority: PublicKey, programId: string) => {
-        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+    private programAuthorityChange = async (
+        ms: any,
+        currentAuthority: PublicKey,
+        programId: string,
+        destination: { key: PublicKey; label: string; direction: "to" | "out of" },
+    ) => {
+        const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
-        console.log(`This will create a safe upgrade authority transfer transaction of ${programId} to the Squad vault`);
+        console.log(`This will create a safe upgrade authority transfer transaction of ${programId} ${destination.direction} the Squad vault`);
         console.log("Program Address: " + chalk.blue(`${programId}`));
         console.log(`Multisig Address: ` + chalk.white(`${ms.publicKey.toBase58()}`));
         console.log(`Current Program Authority: ` + chalk.white(`${currentAuthority}`));
-        console.log(`New Program Upgrade Authority: ` + chalk.green(vault.toBase58()) + chalk.white(` (Vault - authority index 1)`));
+        console.log(`New Program Upgrade Authority: ` + chalk.green(destination.key.toBase58()) + chalk.white(` (${destination.label})`));
         const {action} = await inquirer.prompt({default: false, name: 'action', type: 'confirm', message: `Continue?`});
-        if (action) {
-            const status = new Spinner('Creating transaction...');
-            status.start();
-            try {
-                const tx = await this.api.createSafeAuthorityTx(ms.publicKey, new PublicKey(programId), new PublicKey(currentAuthority), vault);
-                status.stop();
-                console.log(chalk.green("Transaction created!"));
-                console.log(chalk.blue("Transaction ID: ") + chalk.white(tx));
-                await continueInq();
-                this.multisig(ms);
-            }catch(e){
-                console.log(e);
-                status.stop();
-                console.log(`Transaction creation failed - Enter to continue`);
-                await continueInq();
-                this.program(ms);
-            }
-        }else{
+        if (!action) {
+            return this.program(ms);
+        }
+        const status = new Spinner('Creating transaction...');
+        status.start();
+        try {
+            const tx = await this.api.createSafeAuthorityTx(ms.publicKey, new PublicKey(programId), new PublicKey(currentAuthority), destination.key);
+            status.stop();
+            console.log(chalk.green("Transaction created!"));
+            console.log(chalk.blue("Transaction ID: ") + chalk.white(tx));
+            await continueInq();
+            this.multisig(ms);
+        } catch(e) {
+            console.log(e);
+            status.stop();
+            console.log(`Transaction creation failed - Enter to continue`);
+            await continueInq();
             this.program(ms);
         }
-    }
-
-    programAuthorityOut = async (ms: any, currentAuthority: PublicKey, programId: string) => {
-        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
-        this.header(vault);
-        console.log(`This will create a safe upgrade authority transfer transaction of ${programId} out of the Squad vault`);
-        console.log("Program Address: " + chalk.blue(`${programId}`));
-        console.log(`Multisig Address: ` + chalk.white(`${ms.publicKey.toBase58()}`));
-        console.log(`Current Program Authority: ` + chalk.white(`${currentAuthority}`));
-        console.log(`New Program Upgrade Authority: ` + chalk.green(this.wallet.publicKey.toBase58()) + chalk.white(` (Your connected wallet)`));
-        const {action} = await inquirer.prompt({default: false, name: 'action', type: 'confirm', message: `Continue?`});
-        if (action) {
-            const status = new Spinner('Creating transaction...');
-            status.start();
-            try {
-                const tx = await this.api.createSafeAuthorityTx(ms.publicKey, new PublicKey(programId), new PublicKey(currentAuthority), this.wallet.publicKey);
-                status.stop();
-                console.log(chalk.green("Transaction created!"));
-                console.log(chalk.blue("Transaction ID: ") + chalk.white(tx));
-                await continueInq();
-                this.multisig(ms);
-            }catch(e){
-                console.log(e);
-                status.stop();
-                console.log(`Transaction creation failed - Enter to continue`);
-                await continueInq();
-                this.program(ms);
-            }
-        }else{
-            this.program(ms);
-        }
-    }
+    };
 
     create = async () => {
         this.header();
@@ -828,7 +771,7 @@ class Menu{
 
     ata = async (ms: any) => {
         clear();
-        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+        const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         const ataKeys = await createATAInq(vault);
         if(ataKeys){
@@ -853,7 +796,7 @@ class Menu{
 
     nfts = async (ms: any) => {
         clear();
-        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+        const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         const {action} = await nftMainInq();
         if (action === 0) {
@@ -869,7 +812,7 @@ class Menu{
 
     validator = async (ms: any) => {
         clear()
-        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+        const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         const {action} = await validatorMainInq();
         if (action === 0) {
@@ -881,7 +824,7 @@ class Menu{
 
     validatorWithdrawAuthorityChange = async (ms: any) => {
         clear();
-        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+        const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         const {validatorId} = await validatorWithdrawAuthPrompt();
         if (validatorId.length < 1) {
@@ -916,7 +859,7 @@ class Menu{
     }
 
     transferWithdrawAuthorityOut = async (ms: any, withdrawAuthority: string, validatorId: string, destination: string) => {
-        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+        const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         console.log(`This will create a transaction for the transfer of the validator (${validatorId}) withdraw authority out of the Squad vault`);
         console.log("Validator Address: " + chalk.blue(`${validatorId}`));
@@ -947,7 +890,7 @@ class Menu{
 
     nftAuthorityChange = async (ms: any) => {
         clear();
-        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+        const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         const {type, publicKey, mintList} = await nftUpdateAuthorityInq();
         let newAuthority = vault;
@@ -991,7 +934,7 @@ class Menu{
     // this can simply be transferred to the vault directly with metaplex program
     nftAuthorityChangeIncoming = async (ms: any, mintList: PublicKey[], newAuthority: PublicKey) => {
         clear();
-        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+        const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         const {validate} = await nftValidateMetasInq();
         let error = false;
@@ -1083,7 +1026,7 @@ class Menu{
     // to move the authority out, transaction will need to be created
     nftAuthorityChangeOutgoing = async (ms: any, mintList: PublicKey[], newAuthority: PublicKey) => {
         clear();
-        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+        const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         let error = false;
         const {ownerValidate} = await nftValidateOwnerInq();
@@ -1175,7 +1118,7 @@ class Menu{
 
     nftValidateMetaAuthorities = async (ms: any) => {
         clear();
-        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+        const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         let error = false;
         console.log("This process will check that all the provided mints specified have the proper matching metadata account update authority, and also possess valid metadata accounts.");
@@ -1221,7 +1164,7 @@ class Menu{
 
     nftBatchTransfer = async (ms: any) => {
         clear();
-        const [vault] = await getAuthorityPDA(ms.publicKey, new BN(1), this.api.programId);
+        const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         const {mintList} = await nftMintListInq();
         if (mintList && mintList.length > 0) {
