@@ -11,6 +11,8 @@ import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { Wallet } from "@coral-xyz/anchor";
 import {Connection, LAMPORTS_PER_SOL, PublicKey, VoteProgram} from "@solana/web3.js";
 
+type SquadsTxBuilder = Awaited<ReturnType<Squads["getTransactionBuilder"]>>;
+
 class API{
     squads;
     wallet;
@@ -45,6 +47,40 @@ class API{
             await this.connection.confirmTransaction(sig, "confirmed");
         }
         return sig;
+    };
+
+    // Builder-driven multisig config changes (auth index 0): add/remove member, change threshold.
+    // Sends create+add+activate (+ optional topup) in one Solana tx, then casts the caller's approval.
+    private submitBuilderTx = async (
+        msPDA: PublicKey,
+        mutate: (b: SquadsTxBuilder) => Promise<SquadsTxBuilder>,
+        opts: { includeTopUp?: boolean } = {},
+    ) => {
+        const builder = await this.squads.getTransactionBuilder(msPDA, 0);
+        const [txInstructions, txPDA] = await (await mutate(builder)).getInstructions();
+        const activateIx = await this.squads.buildActivateTransaction(msPDA, txPDA);
+        const ixes: anchor.web3.TransactionInstruction[] = [];
+        if (opts.includeTopUp) {
+            const topup = await this.squads.checkGetTopUpInstruction(msPDA);
+            if (topup) ixes.push(topup);
+        }
+        ixes.push(...txInstructions, activateIx);
+        await this.sendAndConfirm(ixes);
+        await this.squads.approveTransaction(txPDA);
+        return this.squads.getTransaction(txPDA);
+    };
+
+    // Wraps a single arbitrary instruction as a vault-authority (auth index 1) multisig tx.
+    // Creates, adds, activates, and approves the multisig tx in one Solana tx.
+    private submitAsMultisigTx = async (msPDA: PublicKey, innerIx: anchor.web3.TransactionInstruction): Promise<PublicKey> => {
+        const nextTxIndex = await this.squads.getNextTransactionIndex(msPDA);
+        const [txPDA] = await getTxPDA(msPDA, new BN(nextTxIndex), this.programId);
+        const createTxIx = await this.squads.buildCreateTransaction(msPDA, 1, nextTxIndex);
+        const addIx = await this.squads.buildAddInstruction(msPDA, txPDA, innerIx, 1);
+        const activateIx = await this.squads.buildActivateTransaction(msPDA, txPDA);
+        const approveIx = await this.squads.buildApproveTransaction(msPDA, txPDA);
+        await this.sendAndConfirm([createTxIx, addIx, activateIx, approveIx]);
+        return txPDA;
     };
 
     getSquadExtended = async (ms: PublicKey) => {
@@ -123,37 +159,19 @@ class API{
         return null
     }
 
-    createTransferWithdrawAuthTx = async (msPDA: PublicKey, validatorId: PublicKey, currentAuthority: PublicKey, newAuthorizedPubkey: PublicKey) => {
-        const nextTxIndex = await this.squads.getNextTransactionIndex(msPDA);
-        const [txPDA] = await getTxPDA(msPDA, new BN(nextTxIndex), this.programId);
-        const createTxIx = await this.squads.buildCreateTransaction(msPDA, 1, nextTxIndex);
+    createTransferWithdrawAuthTx = (msPDA: PublicKey, validatorId: PublicKey, currentAuthority: PublicKey, newAuthorizedPubkey: PublicKey) => {
         const authorizeIx = VoteProgram.authorize({
             authorizedPubkey: currentAuthority,
             newAuthorizedPubkey,
             voteAuthorizationType: { index: 1 },
             votePubkey: validatorId,
-        }).instructions[0]
-
-        const addIx = await this.squads.buildAddInstruction(msPDA, txPDA, authorizeIx, 1);
-        const activateIx = await this.squads.buildActivateTransaction(msPDA, txPDA);
-        const approveIx = await this.squads.buildApproveTransaction(msPDA, txPDA);
-
-        await this.sendAndConfirm([createTxIx, addIx, activateIx, approveIx]);
-        return txPDA;
+        }).instructions[0];
+        return this.submitAsMultisigTx(msPDA, authorizeIx);
     };
 
     createSafeAuthorityTx = async (msPDA: PublicKey, programId: PublicKey, currentAuthority: PublicKey, newAuthority: PublicKey) => {
-        const nextTxIndex = await this.squads.getNextTransactionIndex(msPDA);
-        const [txPDA] = await getTxPDA(msPDA, new BN(nextTxIndex), this.programId);
-        const createTxIx = await this.squads.buildCreateTransaction(msPDA, 1, nextTxIndex);
         const ix = await upgradeSetAuthorityIx(programId, currentAuthority, newAuthority);
-
-        const addIx = await this.squads.buildAddInstruction(msPDA, txPDA, ix, 1);
-        const activateIx = await this.squads.buildActivateTransaction(msPDA, txPDA);
-        const approveIx = await this.squads.buildApproveTransaction(msPDA, txPDA);
-
-        await this.sendAndConfirm([createTxIx, addIx, activateIx, approveIx]);
-        return txPDA;
+        return this.submitAsMultisigTx(msPDA, ix);
     };
     
     executeTransaction = async (tx: PublicKey) => {
@@ -184,43 +202,14 @@ class API{
         return this.squads.cancelTransaction(tx);
     }
     
-    addKeyTransaction = async (msPDA: PublicKey, key: PublicKey) => {
-        const txBuilder = await this.squads.getTransactionBuilder(msPDA, 0);
-        const [txInstructions, txPDA] = await (
-          await txBuilder.withAddMember(key)
-        ).getInstructions();
-        const activateIx = await this.squads.buildActivateTransaction(msPDA, txPDA);
-        const topup = await this.squads.checkGetTopUpInstruction(msPDA);
-        const ixes = [...(topup ? [topup] : []), ...txInstructions, activateIx];
-        await this.sendAndConfirm(ixes);
+    addKeyTransaction = (msPDA: PublicKey, key: PublicKey) =>
+        this.submitBuilderTx(msPDA, b => b.withAddMember(key), { includeTopUp: true });
 
-        await this.squads.approveTransaction(txPDA);
-        return this.squads.getTransaction(txPDA);
-    }
+    removeKeyTransaction = (msPDA: PublicKey, key: PublicKey) =>
+        this.submitBuilderTx(msPDA, b => b.withRemoveMember(key));
 
-    removeKeyTransaction = async (msPDA: PublicKey, key: PublicKey) => {
-        const txBuilder = await this.squads.getTransactionBuilder(msPDA, 0);
-        const [txInstructions, txPDA] = await (
-          await txBuilder.withRemoveMember(key)
-        ).getInstructions();
-        const activateIx = await this.squads.buildActivateTransaction(msPDA, txPDA);
-        await this.sendAndConfirm([...txInstructions, activateIx]);
-
-        await this.squads.approveTransaction(txPDA);
-        return this.squads.getTransaction(txPDA);
-    };
-
-    changeThresholdTransaction = async (msPDA: PublicKey, threshold: number) => {
-        const txBuilder = await this.squads.getTransactionBuilder(msPDA, 0);
-        const [txInstructions, txPDA] = await (
-          await txBuilder.withChangeThreshold(threshold)
-        ).getInstructions();
-        const activateIx = await this.squads.buildActivateTransaction(msPDA, txPDA);
-        await this.sendAndConfirm([...txInstructions, activateIx]);
-
-        await this.squads.approveTransaction(txPDA);
-        return this.squads.getTransaction(txPDA);
-    };
+    changeThresholdTransaction = (msPDA: PublicKey, threshold: number) =>
+        this.submitBuilderTx(msPDA, b => b.withChangeThreshold(threshold));
 
     createTransaction(msPDA: PublicKey, authorityIndex: number){
         return this.squads.createTransaction(msPDA, authorityIndex);
