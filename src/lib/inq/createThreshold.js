@@ -1,24 +1,22 @@
 import inquirer from "inquirer";
 
-export default  (numMembers) => {
-const questions = [
-    {
-        name: 'threshold',
-        type: 'number',
-        default: 1,
-        message: 'Enter the multisig threshold (or enter for default of 1):',
-        validate: function( value, answers ) {
-        if (value > 0 && value <= numMembers) {
-            try {
-            return true;
-            } catch {
-            return 'Invalid threshold - must be between 1 and number of members';
-            }
-        }else{
-            return true;
-        }
-        }
-    }
+export default (numMembers) => {
+    const questions = [
+        {
+            name: 'threshold',
+            type: 'number',
+            default: 1,
+            message: `Enter the multisig threshold (must be between 1 and ${numMembers}, default 1):`,
+            validate: function (value) {
+                if (typeof value !== 'number' || Number.isNaN(value)) {
+                    return 'Threshold must be a number';
+                }
+                if (value < 1 || value > numMembers) {
+                    return `Threshold must be between 1 and ${numMembers}`;
+                }
+                return true;
+            },
+        },
     ];
     return inquirer.prompt(questions);
 };

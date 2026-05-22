@@ -1,9 +1,11 @@
 import * as anchor from "@coral-xyz/anchor";
-import { Connection, PublicKey } from "@solana/web3.js";
+import { AccountInfo, Connection, ParsedAccountData, PublicKey, RpcResponseAndContext } from "@solana/web3.js";
 import BN from "bn.js";
 const BPFLOADER_ADDRESS = new anchor.web3.PublicKey("BPFLoaderUpgradeab1e11111111111111111111111");
 
-const getParsed = (account: any) => {
+type ParsedAccountResponse = RpcResponseAndContext<AccountInfo<Buffer | ParsedAccountData> | null>;
+
+const getParsed = (account: ParsedAccountResponse) => {
     const {value} = account;
     if (value && value.data && 'parsed' in value.data) {
         const { data: {parsed}} = value;

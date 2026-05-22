@@ -1,4 +1,3 @@
-import axios from "axios";
 import Squads, { getTxPDA, getAuthorityPDA } from "@sqds/sdk";
 import * as anchor from "@coral-xyz/anchor";
 import BN from "bn.js";
@@ -8,10 +7,13 @@ import {getAssociatedTokenAddress,createAssociatedTokenAccountInstruction} from 
 import {idl} from "../info";
 import { ASSOCIATED_TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
-import { Wallet } from "@coral-xyz/anchor";
 import {Connection, LAMPORTS_PER_SOL, PublicKey, VoteProgram} from "@solana/web3.js";
+import type CliConnection from "./connection.js";
+import type { AnchorWallet, MultisigAccount, SquadsTxBuilder, TransactionAccount } from "../types.js";
 
-type SquadsTxBuilder = Awaited<ReturnType<Squads["getTransactionBuilder"]>>;
+// Minimal shape we need from program.account.ms.all() — the IDL is cast to
+// the generic Idl type so anchor types account data as `unknown`.
+type MsProgramAccount = { publicKey: PublicKey; account: { keys: PublicKey[] } };
 
 class API{
     squads;
@@ -22,7 +24,7 @@ class API{
     program;
     provider;
     programManagerId: PublicKey;
-    constructor(wallet: Wallet, connection: any, programId: PublicKey, programManagerId: PublicKey){
+    constructor(wallet: AnchorWallet, connection: CliConnection, programId: PublicKey, programManagerId: PublicKey){
         this.programId = programId;
         this.programManagerId = programManagerId;
         this.squads = Squads.endpoint(connection.cluster, wallet, {commitmentOrConfig: "confirmed", multisigProgramId: this.programId, programManagerProgramId: this.programManagerId});
@@ -74,7 +76,7 @@ class API{
     // Creates, adds, activates, and approves the multisig tx in one Solana tx.
     private submitAsMultisigTx = async (msPDA: PublicKey, innerIx: anchor.web3.TransactionInstruction): Promise<PublicKey> => {
         const nextTxIndex = await this.squads.getNextTransactionIndex(msPDA);
-        const [txPDA] = await getTxPDA(msPDA, new BN(nextTxIndex), this.programId);
+        const [txPDA] = getTxPDA(msPDA, new BN(nextTxIndex), this.programId);
         const createTxIx = await this.squads.buildCreateTransaction(msPDA, 1, nextTxIndex);
         const addIx = await this.squads.buildAddInstruction(msPDA, txPDA, innerIx, 1);
         const activateIx = await this.squads.buildActivateTransaction(msPDA, txPDA);
@@ -88,41 +90,37 @@ class API{
     };
 
     getAuthority = async (msPDA: PublicKey, authorityIndex: number = 1): Promise<PublicKey> => {
-        const [pda] = await getAuthorityPDA(msPDA, new BN(authorityIndex), this.programId);
+        const [pda] = getAuthorityPDA(msPDA, new BN(authorityIndex), this.programId);
         return pda;
     };
 
     getVault = (msPDA: PublicKey): Promise<PublicKey> => this.getAuthority(msPDA, 1);
     
-    getSquads = async (pubkey: PublicKey) => {
-        const allSquads = await this.program.account.ms.all();
-        const mySquads = allSquads.filter((s:any) => {
-            const mappedKeys = s.account.keys.map((k: PublicKey) => k.toBase58());
-            if (mappedKeys.indexOf(this.wallet.publicKey.toBase58()) >= 0){
-                return true;
-            }
-            return false;
-        }).map(s => s.publicKey);
+    getSquads = async (_pubkey: PublicKey) => {
+        const allSquads = await this.program.account.ms.all() as MsProgramAccount[];
+        const mySquads = allSquads
+            .filter((s) => s.account.keys.some((k) => k.equals(this.wallet.publicKey)))
+            .map((s) => s.publicKey);
         return Promise.all(mySquads.map(k => this.getSquadExtended(k)));
     };
-    
-    getChainSquads = async (pubkey: PublicKey) => {
-        
-    }
 
-    getTransactions = async (ms: any) => {
+    getTransactions = async (ms: MultisigAccount): Promise<TransactionAccount[]> => {
         const txIndex = ms.transactionIndex;
-        const txsPDA = [...new Array(txIndex)].map( (_, i) => {
-            const ind = new BN(i+1);
-            const [txPDA] =  getTxPDA(ms.publicKey, ind, this.programId);
+        const txsPDA = [...new Array(txIndex)].map((_, i) => {
+            const ind = new BN(i + 1);
+            const [txPDA] = getTxPDA(ms.publicKey, ind, this.programId);
             return txPDA;
-        })
-        return this.squads.getTransactions(txsPDA)
+        });
+        const results = await this.squads.getTransactions(txsPDA);
+        return results.filter((t): t is TransactionAccount => t !== null);
     }
     
-    createMultisig = async (threshold: number, createKey: PublicKey,members: PublicKey[]) => {
-        const tx = await this.squads.createMultisig(threshold,createKey,members);
-        // try to fund the PDA
+    createMultisig = async (threshold: number, createKey: PublicKey, members: PublicKey[]) => {
+        // The multisig is created on-chain by the SDK call below. After that succeeds the
+        // CLI sends a small SOL transfer to seed the vault. If that funding step fails we
+        // still return the created multisig — re-throwing would make the user think the
+        // whole creation failed and leave an orphan multisig they don't know exists.
+        const tx = await this.squads.createMultisig(threshold, createKey, members);
         try {
             const vault = await this.getVault(tx.publicKey);
             const fundIx = anchor.web3.SystemProgram.transfer({
@@ -131,10 +129,10 @@ class API{
                 lamports: anchor.web3.LAMPORTS_PER_SOL / 1000,
             });
             await this.sendAndConfirm([fundIx]);
-        }catch (e){
-            console.log("Error funding vault", e);
-            throw e;
-            // couldn't fund
+        } catch (e) {
+            console.log(`\nWarning: multisig was created at ${tx.publicKey.toBase58()}, but the initial vault funding (~0.001 SOL) failed.`);
+            console.log(`You may want to manually send a small amount of SOL to the vault to cover rent for future transactions.`);
+            console.log(`Funding error:`, e);
         }
         return tx;
     };
@@ -154,15 +152,15 @@ class API{
     };
     getValidatorWithdrawAuth = async (validatorAddress: anchor.web3.PublicKey) => {
         try {
-            const parsedAccount = await this.connection.getParsedAccountInfo(validatorAddress) as any
-            const parsed = this.getParsed(parsedAccount)
+            const parsedAccount = await this.connection.getParsedAccountInfo(validatorAddress);
+            const parsed = this.getParsed(parsedAccount);
             if (parsed && parsed.type === "vote") {
-                return parsed.info.authorizedWithdrawer
+                return parsed.info.authorizedWithdrawer;
             }
-        } catch (e) {
-            return null
+        } catch (_e) {
+            return null;
         }
-        return null
+        return null;
     }
 
     createTransferWithdrawAuthTx = (msPDA: PublicKey, validatorId: PublicKey, currentAuthority: PublicKey, newAuthorizedPubkey: PublicKey) => {
@@ -180,14 +178,6 @@ class API{
         return this.submitAsMultisigTx(msPDA, ix);
     };
     
-    executeTransaction = async (tx: PublicKey) => {
-        return this.squads.executeTransaction(tx);
-    };
-    
-    executeInstruction = async (tx: PublicKey, ix: PublicKey) => {
-        return this.squads.executeInstruction(tx, ix);
-    };
-
     executeTransactionBuilder = async (tx: PublicKey) => {
         return this.squads.buildExecuteTransaction(tx);
     };
@@ -238,6 +228,7 @@ class API{
         return getAssets(this.connection, vaultPDA);
     }
 
+    private balanceErrorLogged = false;
     async getWalletBalance(cb?: (balance: number) => void) {
         try {
             const lamports = await this.connection.getBalance(this.wallet.publicKey, "processed");
@@ -246,14 +237,19 @@ class API{
                 cb(SOL);
             }
             return SOL;
-        }catch(e){
+        } catch (e) {
+            if (!this.balanceErrorLogged) {
+                this.balanceErrorLogged = true;
+                console.log(`\nWarning: could not fetch wallet balance from RPC. Displayed balance may be inaccurate.`);
+                console.log(`Error:`, e);
+            }
             return 0;
         }
     }
 
     async createATA(mint: PublicKey, owner: PublicKey){
-        const ataPubkey = await getAssociatedTokenAddress(mint,owner,true,TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID)
-        const createATAIx = await createAssociatedTokenAccountInstruction(
+        const ataPubkey = await getAssociatedTokenAddress(mint,owner,true,TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
+        const createATAIx = createAssociatedTokenAccountInstruction(
             this.wallet.publicKey,
             ataPubkey,
             owner,
@@ -262,7 +258,7 @@ class API{
             ASSOCIATED_TOKEN_PROGRAM_ID,
         );
 
-        await this.sendAndConfirm([createATAIx], { confirm: false });
+        await this.sendAndConfirm([createATAIx]);
         return ataPubkey;
     }
 }

@@ -4,12 +4,14 @@
   "description": "",
   "main": "bin/index.js",
   "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint 'src/**/*.ts'",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": {
     "name": "Sean Ganser",
-    "email": "sean.ganser@gmail.com",
-    "url": "https://github.com/ogmedia"
+    "email": "sean@sqds.io"
   },
   "keywords": [
     "solana",
@@ -75,6 +77,9 @@
     "@types/inquirer": "9.0.3",
     "@types/node": "18.14.6",
     "@types/yargs": "17.0.22",
+    "@typescript-eslint/eslint-plugin": "6.21.0",
+    "@typescript-eslint/parser": "6.21.0",
+    "eslint": "8.57.0",
     "ts-node": "10.9.1"
   },
   "resolutions": {

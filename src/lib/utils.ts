@@ -26,14 +26,9 @@ export async function getMultipleAccountsBatch(
         keys.push(tempKeys)
     }
 
-    const accounts: Array<null | {
-        executable: any
-        owner: PublicKey
-        lamports: any
-        data: Buffer
-    }> = []
+    const accounts: Array<AccountInfo<Buffer> | null> = []
 
-    const resArray: { [key: number]: any } = {}
+    const resArray: { [key: number]: Array<AccountInfo<Buffer> | null> } = {}
     await Promise.all(
         keys.map(async (key, index) => {
             resArray[index] = await connection.getMultipleAccountsInfo(key, commitment)
