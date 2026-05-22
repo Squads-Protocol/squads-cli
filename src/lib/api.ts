@@ -31,6 +31,22 @@ class API{
         this.program = new anchor.Program(idl as anchor.Idl, this.programId, this.provider);
     }
 
+    private sendAndConfirm = async (
+        ixes: anchor.web3.TransactionInstruction[],
+        opts: { confirm?: boolean } = {},
+    ): Promise<string> => {
+        const { confirm = true } = opts;
+        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+        const tx = new anchor.web3.Transaction({ blockhash, lastValidBlockHeight, feePayer: this.wallet.publicKey });
+        tx.add(...ixes);
+        const signed = await this.wallet.signTransaction(tx);
+        const sig = await this.connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
+        if (confirm) {
+            await this.connection.confirmTransaction(sig, "confirmed");
+        }
+        return sig;
+    };
+
     getSquadExtended = async (ms: PublicKey) => {
         return this.squads.getMultisig(ms);
     };
@@ -72,16 +88,7 @@ class API{
                 toPubkey: vault,
                 lamports: anchor.web3.LAMPORTS_PER_SOL / 1000,
             });
-            const {blockhash, lastValidBlockHeight} = await this.connection.getLatestBlockhash();
-            const fundTx = new anchor.web3.Transaction({
-                blockhash,
-                feePayer: this.wallet.publicKey,
-                lastValidBlockHeight,
-            });
-            fundTx.add(fundIx);
-            const signedTx = await this.wallet.signTransaction(fundTx);
-            const sig =await this.connection.sendRawTransaction(signedTx.serialize(), {preflightCommitment: "confirmed",skipPreflight: true});
-            await this.connection.confirmTransaction(sig, "confirmed");
+            await this.sendAndConfirm([fundIx]);
         }catch (e){
             console.log("Error funding vault", e);
             throw e;
@@ -131,45 +138,21 @@ class API{
         const activateIx = await this.squads.buildActivateTransaction(msPDA, txPDA);
         const approveIx = await this.squads.buildApproveTransaction(msPDA, txPDA);
 
-        const {blockhash, lastValidBlockHeight} = await this.connection.getLatestBlockhash();
-        let tx = new anchor.web3.Transaction({blockhash, lastValidBlockHeight, feePayer: this.wallet.publicKey});
-        tx.add(createTxIx);
-        tx.add(addIx);
-        tx.add(activateIx);
-        tx.add(approveIx);
-        console.log("Transaction composed")
-        tx = await this.wallet.signTransaction(tx);
-        console.log("Transaction signed")
-        console.log("Sending");
-        const sig = await this.connection.sendRawTransaction(tx.serialize(), {skipPreflight: true});
-        await this.connection.confirmTransaction(sig, "confirmed");
-        console.log("Transaction sent");
+        await this.sendAndConfirm([createTxIx, addIx, activateIx, approveIx]);
         return txPDA;
     };
-    
+
     createSafeAuthorityTx = async (msPDA: PublicKey, programId: PublicKey, currentAuthority: PublicKey, newAuthority: PublicKey) => {
         const nextTxIndex = await this.squads.getNextTransactionIndex(msPDA);
         const [txPDA] = await getTxPDA(msPDA, new BN(nextTxIndex), this.programId);
         const createTxIx = await this.squads.buildCreateTransaction(msPDA, 1, nextTxIndex);
         const ix = await upgradeSetAuthorityIx(programId, currentAuthority, newAuthority);
-    
+
         const addIx = await this.squads.buildAddInstruction(msPDA, txPDA, ix, 1);
         const activateIx = await this.squads.buildActivateTransaction(msPDA, txPDA);
         const approveIx = await this.squads.buildApproveTransaction(msPDA, txPDA);
-    
-        const {blockhash, lastValidBlockHeight} = await this.connection.getLatestBlockhash();
-        let tx = new anchor.web3.Transaction({blockhash, lastValidBlockHeight, feePayer: this.wallet.publicKey});
-        tx.add(createTxIx);
-        tx.add(addIx);
-        tx.add(activateIx);
-        tx.add(approveIx);
-        console.log("Transaction composed")
-        tx = await this.wallet.signTransaction(tx);
-        console.log("Transaction signed")
-        console.log("Sending");
-        const sig = await this.connection.sendRawTransaction(tx.serialize(), {skipPreflight: true});
-        await this.connection.confirmTransaction(sig, "confirmed");
-        console.log("Transaction sent");
+
+        await this.sendAndConfirm([createTxIx, addIx, activateIx, approveIx]);
         return txPDA;
     };
     
@@ -207,71 +190,34 @@ class API{
           await txBuilder.withAddMember(key)
         ).getInstructions();
         const activateIx = await this.squads.buildActivateTransaction(msPDA, txPDA);
-        console.log("transaction instructions", JSON.stringify(txInstructions, null, 2));
-        const {blockhash, lastValidBlockHeight} = await this.connection.getLatestBlockhash();
-        let tx = new anchor.web3.Transaction({blockhash, lastValidBlockHeight, feePayer: this.wallet.publicKey});
         const topup = await this.squads.checkGetTopUpInstruction(msPDA);
-        if(topup){
-            tx.add(topup);
-        }
-        tx.add(...txInstructions);
-        tx.add(activateIx);
-    
-        console.log("Transaction composed")
-        tx = await this.wallet.signTransaction(tx);
-        console.log("Transaction signed")
-        console.log("Sending");
-        const sig = await this.connection.sendRawTransaction(tx.serialize(), {skipPreflight: true});
-        await this.connection.confirmTransaction(sig, "confirmed");
-    
+        const ixes = [...(topup ? [topup] : []), ...txInstructions, activateIx];
+        await this.sendAndConfirm(ixes);
+
         await this.squads.approveTransaction(txPDA);
         return this.squads.getTransaction(txPDA);
     }
-    
+
     removeKeyTransaction = async (msPDA: PublicKey, key: PublicKey) => {
         const txBuilder = await this.squads.getTransactionBuilder(msPDA, 0);
         const [txInstructions, txPDA] = await (
           await txBuilder.withRemoveMember(key)
         ).getInstructions();
         const activateIx = await this.squads.buildActivateTransaction(msPDA, txPDA);
-    
-        const {blockhash, lastValidBlockHeight} = await this.connection.getLatestBlockhash();
-        let tx = new anchor.web3.Transaction({blockhash, lastValidBlockHeight, feePayer: this.wallet.publicKey});
-    
-        tx.add(...txInstructions);
-        tx.add(activateIx);
-    
-        console.log("Transaction composed")
-        tx = await this.wallet.signTransaction(tx);
-        console.log("Transaction signed")
-        console.log("Sending");
-        const sig = await this.connection.sendRawTransaction(tx.serialize(), {skipPreflight: true});
-        await this.connection.confirmTransaction(sig, "confirmed");
-    
+        await this.sendAndConfirm([...txInstructions, activateIx]);
+
         await this.squads.approveTransaction(txPDA);
         return this.squads.getTransaction(txPDA);
     };
-    
+
     changeThresholdTransaction = async (msPDA: PublicKey, threshold: number) => {
         const txBuilder = await this.squads.getTransactionBuilder(msPDA, 0);
         const [txInstructions, txPDA] = await (
           await txBuilder.withChangeThreshold(threshold)
         ).getInstructions();
         const activateIx = await this.squads.buildActivateTransaction(msPDA, txPDA);
-    
-        const {blockhash, lastValidBlockHeight} = await this.connection.getLatestBlockhash();
-        let tx = new anchor.web3.Transaction({blockhash, lastValidBlockHeight, feePayer: this.wallet.publicKey});
-    
-        tx.add(...txInstructions);
-        tx.add(activateIx);
-    
-        console.log("Transaction composed")
-        tx = await this.wallet.signTransaction(tx);
-        console.log("Transaction signed")
-        console.log("Sending");
-        const sig = await this.connection.sendRawTransaction(tx.serialize(), {skipPreflight: true});
-        await this.connection.confirmTransaction(sig, "confirmed");
-    
+        await this.sendAndConfirm([...txInstructions, activateIx]);
+
         await this.squads.approveTransaction(txPDA);
         return this.squads.getTransaction(txPDA);
     };
@@ -321,11 +267,7 @@ class API{
             ASSOCIATED_TOKEN_PROGRAM_ID,
         );
 
-        const {blockhash, lastValidBlockHeight} = await this.connection.getLatestBlockhash();
-        let tx = new anchor.web3.Transaction({blockhash, lastValidBlockHeight, feePayer: this.wallet.publicKey});
-        tx.add(createATAIx);
-        tx = await this.wallet.signTransaction(tx);
-        const sig = await this.connection.sendRawTransaction(tx.serialize(), {skipPreflight: true});
+        await this.sendAndConfirm([createATAIx], { confirm: false });
         return ataPubkey;
     }
 }
