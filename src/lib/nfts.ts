@@ -1,33 +1,22 @@
-import {NodeWallet, programs} from "@metaplex/js";
 import {TOKEN_PROGRAM_ID} from '@solana/spl-token';
 import * as anchor from "@coral-xyz/anchor";
-import {AccountInfo, Connection, Keypair, ParsedAccountData, PublicKey} from "@solana/web3.js";
+import {Connection, Keypair, PublicKey} from "@solana/web3.js";
 import {
+    keypairIdentity,
     lamports,
     Metaplex,
     token,
     toMetadata,
     toMetadataAccount,
-    UnparsedMaybeAccount, walletAdapterIdentity
+    UnparsedMaybeAccount,
 } from "@metaplex-foundation/js";
 import * as fs from "fs";
+import { getMultipleAccountsBatch } from "./utils.js";
 import { METAPLEX_PROGRAM_ID, updateMetadataAuthorityIx } from "./metadataInstructions.js";
 import {TokenStandard} from '@metaplex-foundation/mpl-token-metadata';
 
 import Squads from "@sqds/sdk";
 import type { Mutable, TxMetaPayload } from "../types.js";
-
-type ParsedTokenAccount = { pubkey: PublicKey; account: AccountInfo<ParsedAccountData> };
-
-export const checkIsNFT = async (connection: Connection, acc: ParsedTokenAccount) => {
-    try {
-        const edition = await programs.metadata.Metadata.getEdition(connection, acc.account.data.parsed.info.mint)
-        if (edition)
-            return true;
-    } catch (_e) {
-        return acc.account.data.parsed.info.tokenAmount.decimals === 0;
-    }
-}
 
 type BatchTransactionCreationError = 'approval' | 'activation' | 'none';
 // can fit 250 ixes
@@ -154,79 +143,72 @@ export const prepareBulkUpdate = async (mints: PublicKey[]) => {
 };
 
 export const getMetadataAccount = (mint: PublicKey) => {
-    // to do  - put in real derivation seeds
-    return PublicKey.findProgramAddressSync([anchor.utils.bytes.utf8.encode('metadata'), METAPLEX_PROGRAM_ID.toBuffer(), mint.toBuffer()], METAPLEX_PROGRAM_ID)[0];
+    return PublicKey.findProgramAddressSync(
+        [anchor.utils.bytes.utf8.encode('metadata'), METAPLEX_PROGRAM_ID.toBuffer(), mint.toBuffer()],
+        METAPLEX_PROGRAM_ID,
+    )[0];
 };
 
+export const getEditionAccount = (mint: PublicKey) => {
+    return PublicKey.findProgramAddressSync(
+        [
+            anchor.utils.bytes.utf8.encode('metadata'),
+            METAPLEX_PROGRAM_ID.toBuffer(),
+            mint.toBuffer(),
+            anchor.utils.bytes.utf8.encode('edition'),
+        ],
+        METAPLEX_PROGRAM_ID,
+    )[0];
+};
+
+// Fetches metadata accounts in batches (100 per RPC, parallelized) and checks
+// that each one exists and is owned by the metaplex program.
 export const checkAllMetas = async (connection: Connection, mints: PublicKey[]) => {
-    const success = [];
-    const failures = []
-    for (const mint of mints) {
-        const valid = await validateMetadataAccount(connection, getMetadataAccount(mint));
-        if (valid) {
-            success.push(mint);
-        }else{
-            failures.push(mint);
+    const metadataAccounts = mints.map(getMetadataAccount);
+    const fetched = await getMultipleAccountsBatch(connection, metadataAccounts, "confirmed");
+    const success: PublicKey[] = [];
+    const failures: PublicKey[] = [];
+    fetched.forEach((entry, i) => {
+        if (entry && entry.account.lamports > 0 && entry.account.owner.equals(METAPLEX_PROGRAM_ID)) {
+            success.push(mints[i]);
+        } else {
+            failures.push(mints[i]);
         }
-    }
-    return {
-        success,
-        failures
-    }
+    });
+    return { success, failures };
 };
 
-// check that the metadata account exists and is owned by the metaplex program
-export const validateMetadataAccount = async (connection: Connection, metadataAccount: PublicKey) => {
-    const a = await connection.getAccountInfo(metadataAccount);
-    // if account is null, or the account lamports is 0, or if the account owner is not the metaplex_program_id, return false
-    if (!a || a.lamports === 0 || !a.owner.equals(METAPLEX_PROGRAM_ID)) {
-        return false;
-    }
-    return true;
-};
-
-// checks that the current update authority matches the given authority
-export const checkMetadataAuthority = async (connection: Connection, metadataAccount: PublicKey, authority: PublicKey) => {
-    const a = await connection.getAccountInfo(metadataAccount);
-    if (!a || a.lamports === 0 || !a.owner.equals(METAPLEX_PROGRAM_ID)) {
-        return false;
-    }
-    if (a) {
-        // parse the account data based on the Metadata struct
-        const unparsedMaybeAccount =  {
-            ...a,
-            publicKey: metadataAccount,
-            exists: true,
-            lamports: lamports(a.lamports),
-          } as UnparsedMaybeAccount;
-
-        let metadata = toMetadata(toMetadataAccount(unparsedMaybeAccount));
-        if (metadata.updateAuthorityAddress.equals(authority)) {
-            return true;
-        }
-    }
-    return false;
-}
-
+// Same batching as checkAllMetas, plus decodes the metadata and verifies the
+// updateAuthority matches the supplied key.
 export const checkAllMetasAuthority = async (connection: Connection, mints: PublicKey[], authority: PublicKey) => {
-    const success = [];
-    const failures = []
-    for (const mint of mints) {
+    const metadataAccounts = mints.map(getMetadataAccount);
+    const fetched = await getMultipleAccountsBatch(connection, metadataAccounts, "confirmed");
+    const success: PublicKey[] = [];
+    const failures: PublicKey[] = [];
+    fetched.forEach((entry, i) => {
+        const mint = mints[i];
+        if (!entry || entry.account.lamports === 0 || !entry.account.owner.equals(METAPLEX_PROGRAM_ID)) {
+            failures.push(mint);
+            return;
+        }
         try {
-            const valid = await checkMetadataAuthority(connection, getMetadataAccount(mint), authority);
-            if (valid) {
+            const unparsed = {
+                ...entry.account,
+                publicKey: metadataAccounts[i],
+                exists: true,
+                lamports: lamports(entry.account.lamports),
+            } as UnparsedMaybeAccount;
+            const metadata = toMetadata(toMetadataAccount(unparsed));
+            if (metadata.updateAuthorityAddress.equals(authority)) {
                 success.push(mint);
-            }else{
+            } else {
                 failures.push(mint);
             }
-        }catch(e) {
+        } catch {
             failures.push(mint);
         }
-    }
-    return {
-        success,
-        failures
-    }
+    });
+    return { success, failures };
 };
 
 // loads the mint json and maps the mints to publickey. The file must contain
@@ -358,15 +340,10 @@ export const createWithdrawNftTx = async (squadsSdk: Squads, multisig: PublicKey
     let hasError = false;
     const failures = [];
 
-    const keypair = new Keypair({
-        publicKey: vault.toBytes(),
-        secretKey: new Keypair().secretKey,
-    })
-    const garbageWallet = new NodeWallet(keypair)
-
-    const metaplex = Metaplex.make(connection).use(
-        walletAdapterIdentity(garbageWallet)
-    )
+    // The metaplex SDK needs *some* identity to derive PDAs, but the actual
+    // signing happens via Squads. A throwaway keypair is fine here.
+    const throwawayKeypair = Keypair.generate();
+    const metaplex = Metaplex.make(connection).use(keypairIdentity(throwawayKeypair));
 
     while (queue.length > 0) {
         const mint = queue.shift();

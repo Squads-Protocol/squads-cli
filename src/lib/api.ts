@@ -1,6 +1,7 @@
 import Squads, { getTxPDA, getAuthorityPDA } from "@sqds/sdk";
 import * as anchor from "@coral-xyz/anchor";
 import BN from "bn.js";
+import chalk from "chalk";
 import { getProgramData, upgradeSetAuthorityIx } from "./program.js";
 import { getAssets } from "./assets.js";
 import {getAssociatedTokenAddress,createAssociatedTokenAccountInstruction} from "@solana/spl-token";
@@ -11,9 +12,18 @@ import {Connection, LAMPORTS_PER_SOL, PublicKey, VoteProgram} from "@solana/web3
 import type CliConnection from "./connection.js";
 import type { AnchorWallet, MultisigAccount, SquadsTxBuilder, TransactionAccount } from "../types.js";
 
-// Minimal shape we need from program.account.ms.all() — the IDL is cast to
-// the generic Idl type so anchor types account data as `unknown`.
-type MsProgramAccount = { publicKey: PublicKey; account: { keys: PublicKey[] } };
+// Below this balance, warn the user that the fee-paying wallet may not have
+// enough SOL to cover the next tx's fees + rent. Heuristic, not a hard floor.
+export const LOW_BALANCE_SOL = 0.1;
+
+// Match the various ways Solana surfaces insufficient-funds errors:
+//  - "Attempt to debit an account but found no record of a prior credit"
+//  - "insufficient funds"
+//  - InstructionError on the system program with Custom: 1
+const looksLikeInsufficientFunds = (e: unknown): boolean => {
+    const msg = e instanceof Error ? e.message : JSON.stringify(e);
+    return /insufficient|debit an account but found no record/i.test(msg);
+};
 
 class API{
     squads;
@@ -35,20 +45,40 @@ class API{
         this.program = new anchor.Program(idl as anchor.Idl, this.programId, this.provider);
     }
 
+    // Logs a yellow warning when the fee-paying wallet is below LOW_BALANCE_SOL.
+    // Returns the current balance so callers can include it in their own messages.
+    warnIfLowBalance = async (): Promise<number> => {
+        const balance = await this.getWalletBalance();
+        if (balance < LOW_BALANCE_SOL) {
+            console.log(chalk.yellow(
+                `\nWarning: fee-paying wallet ${this.wallet.publicKey.toBase58()} has ${balance.toFixed(4)} SOL (below ${LOW_BALANCE_SOL} SOL). Transaction may fail to cover fees/rent.`,
+            ));
+        }
+        return balance;
+    };
+
     private sendAndConfirm = async (
         ixes: anchor.web3.TransactionInstruction[],
         opts: { confirm?: boolean } = {},
     ): Promise<string> => {
         const { confirm = true } = opts;
+        const balance = await this.warnIfLowBalance();
         const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
         const tx = new anchor.web3.Transaction({ blockhash, lastValidBlockHeight, feePayer: this.wallet.publicKey });
         tx.add(...ixes);
         const signed = await this.wallet.signTransaction(tx);
-        const sig = await this.connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
-        if (confirm) {
-            await this.connection.confirmTransaction(sig, "confirmed");
+        try {
+            const sig = await this.connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
+            if (confirm) {
+                await this.connection.confirmTransaction(sig, "confirmed");
+            }
+            return sig;
+        } catch (e) {
+            if (looksLikeInsufficientFunds(e)) {
+                throw new Error(`Transaction failed: wallet ${this.wallet.publicKey.toBase58()} has insufficient SOL (current: ${balance.toFixed(4)} SOL).`);
+            }
+            throw e;
         }
-        return sig;
     };
 
     // Builder-driven multisig config changes (auth index 0): add/remove member, change threshold.
@@ -97,11 +127,36 @@ class API{
     getVault = (msPDA: PublicKey): Promise<PublicKey> => this.getAuthority(msPDA, 1);
     
     getSquads = async (_pubkey: PublicKey) => {
-        const allSquads = await this.program.account.ms.all() as MsProgramAccount[];
-        const mySquads = allSquads
-            .filter((s) => s.account.keys.some((k) => k.equals(this.wallet.publicKey)))
-            .map((s) => s.publicKey);
-        return Promise.all(mySquads.map(k => this.getSquadExtended(k)));
+        // Find all Ms accounts where the connected wallet appears in the `keys`
+        // Vec. Rather than fetching every Ms account on the program (tens of
+        // thousands on mainnet) and filtering client-side, we run a memcmp
+        // filter per possible member position. The keys Vec starts at offset
+        // 58 (computed below from the IDL):
+        //   8 discriminator + 2 threshold + 2 authorityIndex + 4 transactionIndex
+        //   + 4 msChangeIndex + 1 bump + 32 createKey + 1 allowExternalExecute
+        //   + 4 vec-length prefix = 58
+        // We scan up to MS_SCAN_POSITIONS positions in parallel; multisigs that
+        // place this wallet beyond that won't be discovered (rare in practice).
+        const KEYS_OFFSET = 58;
+        const MS_SCAN_POSITIONS = 10;
+        const walletKey = this.wallet.publicKey.toBase58();
+        const queries = Array.from({ length: MS_SCAN_POSITIONS }, (_, i) =>
+            this.program.account.ms.all([
+                { memcmp: { offset: KEYS_OFFSET + i * 32, bytes: walletKey } },
+            ]),
+        );
+        const results = await Promise.all(queries);
+        const seen = new Set<string>();
+        const msPDAs: PublicKey[] = [];
+        for (const batch of results) {
+            for (const entry of batch) {
+                const key = entry.publicKey.toBase58();
+                if (seen.has(key)) continue;
+                seen.add(key);
+                msPDAs.push(entry.publicKey);
+            }
+        }
+        return Promise.all(msPDAs.map(k => this.getSquadExtended(k)));
     };
 
     getTransactions = async (ms: MultisigAccount): Promise<TransactionAccount[]> => {
