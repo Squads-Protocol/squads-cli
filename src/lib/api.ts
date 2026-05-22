@@ -11,10 +11,6 @@ import {Connection, LAMPORTS_PER_SOL, PublicKey, VoteProgram} from "@solana/web3
 import type CliConnection from "./connection.js";
 import type { AnchorWallet, MultisigAccount, SquadsTxBuilder, TransactionAccount } from "../types.js";
 
-// Minimal shape we need from program.account.ms.all() — the IDL is cast to
-// the generic Idl type so anchor types account data as `unknown`.
-type MsProgramAccount = { publicKey: PublicKey; account: { keys: PublicKey[] } };
-
 class API{
     squads;
     wallet;
@@ -97,11 +93,36 @@ class API{
     getVault = (msPDA: PublicKey): Promise<PublicKey> => this.getAuthority(msPDA, 1);
     
     getSquads = async (_pubkey: PublicKey) => {
-        const allSquads = await this.program.account.ms.all() as MsProgramAccount[];
-        const mySquads = allSquads
-            .filter((s) => s.account.keys.some((k) => k.equals(this.wallet.publicKey)))
-            .map((s) => s.publicKey);
-        return Promise.all(mySquads.map(k => this.getSquadExtended(k)));
+        // Find all Ms accounts where the connected wallet appears in the `keys`
+        // Vec. Rather than fetching every Ms account on the program (tens of
+        // thousands on mainnet) and filtering client-side, we run a memcmp
+        // filter per possible member position. The keys Vec starts at offset
+        // 58 (computed below from the IDL):
+        //   8 discriminator + 2 threshold + 2 authorityIndex + 4 transactionIndex
+        //   + 4 msChangeIndex + 1 bump + 32 createKey + 1 allowExternalExecute
+        //   + 4 vec-length prefix = 58
+        // We scan up to MS_SCAN_POSITIONS positions in parallel; multisigs that
+        // place this wallet beyond that won't be discovered (rare in practice).
+        const KEYS_OFFSET = 58;
+        const MS_SCAN_POSITIONS = 10;
+        const walletKey = this.wallet.publicKey.toBase58();
+        const queries = Array.from({ length: MS_SCAN_POSITIONS }, (_, i) =>
+            this.program.account.ms.all([
+                { memcmp: { offset: KEYS_OFFSET + i * 32, bytes: walletKey } },
+            ]),
+        );
+        const results = await Promise.all(queries);
+        const seen = new Set<string>();
+        const msPDAs: PublicKey[] = [];
+        for (const batch of results) {
+            for (const entry of batch) {
+                const key = entry.publicKey.toBase58();
+                if (seen.has(key)) continue;
+                seen.add(key);
+                msPDAs.push(entry.publicKey);
+            }
+        }
+        return Promise.all(msPDAs.map(k => this.getSquadExtended(k)));
     };
 
     getTransactions = async (ms: MultisigAccount): Promise<TransactionAccount[]> => {

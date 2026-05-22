@@ -51,9 +51,9 @@ const load = async (
         cliConnection = new CliConnection(initCluster);
     }
 
-    // start the menu
+    // start the menu state machine
     const cli = new Menu(cliWallet, cliConnection, programId, programManagerId, txMetaProgramId);
-    cli.top();
+    await cli.run();
 };
 
 const help = async () => {

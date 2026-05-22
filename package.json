@@ -35,7 +35,6 @@
     "@marinade.finance/web3js-common": "2.0.18",
     "@metaplex-foundation/js": "0.20.1",
     "@metaplex-foundation/mpl-token-metadata": "2.13.0",
-    "@metaplex/js": "4.12.0",
     "@octokit/auth-basic": "1.4.8",
     "@octokit/rest": "20.0.2",
     "@solana/spl-token": "0.3.6",
