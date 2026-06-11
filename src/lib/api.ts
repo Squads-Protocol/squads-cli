@@ -135,26 +135,44 @@ class API{
         //   8 discriminator + 2 threshold + 2 authorityIndex + 4 transactionIndex
         //   + 4 msChangeIndex + 1 bump + 32 createKey + 1 allowExternalExecute
         //   + 4 vec-length prefix = 58
-        // We scan up to MS_SCAN_POSITIONS positions in parallel; multisigs that
-        // place this wallet beyond that won't be discovered (rare in practice).
+        // memcmp can only match a fixed offset, so we probe one member slot at a
+        // time. A previous fixed 10-slot cap silently hid any membership stored at
+        // slot >= 10. Instead, scan in batches and keep advancing until a full
+        // batch of consecutive slots yields no match. A multisig's `keys` Vec is
+        // dense from slot 0, so once we've covered the baseline and an entire batch
+        // comes back empty, we've passed the largest membership for this wallet.
+        // MIN_SCAN_POSITIONS is probed unconditionally so a wallet that only sits
+        // at a higher slot (e.g. 10) is never missed by an early empty batch.
+        // Server-side memcmp keeps each response small, which matters on mainnet;
+        // operators of unusually large multisigs also have the direct-address entry
+        // path in the menu as a guaranteed fallback.
         const KEYS_OFFSET = 58;
-        const MS_SCAN_POSITIONS = 10;
+        const SCAN_BATCH = 16;
+        const MIN_SCAN_POSITIONS = 64;
         const walletKey = this.wallet.publicKey.toBase58();
-        const queries = Array.from({ length: MS_SCAN_POSITIONS }, (_, i) =>
-            this.program.account.ms.all([
-                { memcmp: { offset: KEYS_OFFSET + i * 32, bytes: walletKey } },
-            ]),
-        );
-        const results = await Promise.all(queries);
         const seen = new Set<string>();
         const msPDAs: PublicKey[] = [];
-        for (const batch of results) {
-            for (const entry of batch) {
-                const key = entry.publicKey.toBase58();
-                if (seen.has(key)) continue;
-                seen.add(key);
-                msPDAs.push(entry.publicKey);
+        let position = 0;
+        let keepScanning = true;
+        while (keepScanning) {
+            const queries = Array.from({ length: SCAN_BATCH }, (_, i) =>
+                this.program.account.ms.all([
+                    { memcmp: { offset: KEYS_OFFSET + (position + i) * 32, bytes: walletKey } },
+                ]),
+            );
+            const results = await Promise.all(queries);
+            let batchHits = 0;
+            for (const batch of results) {
+                for (const entry of batch) {
+                    batchHits++;
+                    const key = entry.publicKey.toBase58();
+                    if (seen.has(key)) continue;
+                    seen.add(key);
+                    msPDAs.push(entry.publicKey);
+                }
             }
+            position += SCAN_BATCH;
+            keepScanning = position < MIN_SCAN_POSITIONS || batchHits > 0;
         }
         return Promise.all(msPDAs.map(k => this.getSquadExtended(k)));
     };
