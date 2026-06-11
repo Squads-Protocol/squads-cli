@@ -78,6 +78,7 @@ export const getAssets = async (connection: Connection, userKey: PublicKey): Pro
                     symbol: 'wSOL',
                     decimals,
                     name: "Wrapped SOL",
+                    provenance: 'registry',
                 });
                 return;
             }
