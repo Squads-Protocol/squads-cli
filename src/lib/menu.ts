@@ -6,6 +6,7 @@ import * as anchor from "@coral-xyz/anchor";
 import CLI from "clui";
 import "console.table";
 import * as fs from 'fs';
+import os from 'os';
 import path from 'path';
 
 import { DEFAULT_MULTISIG_PROGRAM_ID, DEFAULT_PROGRAM_MANAGER_PROGRAM_ID, getIxPDA } from '@sqds/sdk';
@@ -1086,9 +1087,10 @@ class Menu{
             console.log("Creating the multisig transactions, this may take some time depending on the number of mints and your internet connection speed.");
             const status = new Spinner("Initializing metadata authority update multisig transactions...");
             status.start();
-            // setup log file
+            // setup log file in a fresh temp directory (avoid writing sensitive logs into cwd)
             const logtime = Date.now();
-            const logFilename = path.join(process.cwd(),`/authority-out-${logtime}.txt`);
+            const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'squads-authority-out-'));
+            const logFilename = path.join(logDir,`authority-out-${logtime}.txt`);
             const transferOutWriteStream = fs.createWriteStream(logFilename, "utf8");
             const fullResults = [];
             try {
@@ -1118,12 +1120,13 @@ class Menu{
                 transferOutWriteStream.close();
             }
             // write the json log file
-            const logFilenameJson = path.join(process.cwd(),`/authority-out-mints-${logtime}.json`);
+            const logFilenameJson = path.join(logDir,`authority-out-mints-${logtime}.json`);
             // write the successful fullResults to the logFilenameJson
             fs.writeFileSync(logFilenameJson, JSON.stringify(fullResults, null, 2));
             status.stop();
             console.log(`Finished staging authority transfer txs for ${successfullyStagedMetas.length} metadata accounts`);
             console.log(`Output logs written to: ${logFilename}`);
+            console.log(`Mint results written to: ${logFilenameJson}`);
             await continueInq();
         }
         return () => this.nfts(ms);
