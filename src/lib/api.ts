@@ -70,7 +70,10 @@ class API{
         try {
             const sig = await this.connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
             if (confirm) {
-                await this.connection.confirmTransaction(sig, "confirmed");
+                const response = await this.connection.confirmTransaction(sig, "confirmed");
+                if (response.value?.err) {
+                    throw new Error(`Transaction failed on-chain: ${JSON.stringify(response.value.err)}`);
+                }
             }
             return sig;
         } catch (e) {
@@ -82,7 +85,9 @@ class API{
     };
 
     // Builder-driven multisig config changes (auth index 0): add/remove member, change threshold.
-    // Sends create+add+activate (+ optional topup) in one Solana tx, then casts the caller's approval.
+    // Sends create+add+activate (+ optional topup) plus the caller's approval in one atomic
+    // Solana tx, so the approval can never land on a different account at the deterministic
+    // tx PDA if the create/activate leg fails on-chain.
     private submitBuilderTx = async (
         msPDA: PublicKey,
         mutate: (b: SquadsTxBuilder) => Promise<SquadsTxBuilder>,
@@ -91,14 +96,14 @@ class API{
         const builder = await this.squads.getTransactionBuilder(msPDA, 0);
         const [txInstructions, txPDA] = await (await mutate(builder)).getInstructions();
         const activateIx = await this.squads.buildActivateTransaction(msPDA, txPDA);
+        const approveIx = await this.squads.buildApproveTransaction(msPDA, txPDA);
         const ixes: anchor.web3.TransactionInstruction[] = [];
         if (opts.includeTopUp) {
             const topup = await this.squads.checkGetTopUpInstruction(msPDA);
             if (topup) ixes.push(topup);
         }
-        ixes.push(...txInstructions, activateIx);
+        ixes.push(...txInstructions, activateIx, approveIx);
         await this.sendAndConfirm(ixes);
-        await this.squads.approveTransaction(txPDA);
         return this.squads.getTransaction(txPDA);
     };
 
