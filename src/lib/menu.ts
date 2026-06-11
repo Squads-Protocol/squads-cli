@@ -154,11 +154,14 @@ class Menu{
             spinner.stop();
             const testList = await loadAuthorities(this.multisigs);
 
+            const byAddressIndex = testList.length;
+            testList.push({ name: "Open a multisig by address", value: byAddressIndex, short: "By address" });
             const dIndex = testList.length;
             testList.push({ name: "<- Go back", value: dIndex, short: "Go back" });
 
             const {action} = await viewMultisigsMenu(testList, dIndex);
             if (action === dIndex) return () => this.top();
+            if (action === byAddressIndex) return () => this.openMultisigByAddress();
             return () => this.multisig(this.multisigs[action]);
         } catch (error) {
             spinner.stop();
@@ -166,6 +169,41 @@ class Menu{
             console.log("Try restarting the cli using a different Solana cluster");
             await continueInq();
             return () => this.top();
+        }
+    };
+
+    // Direct-address fallback for the discovery list. Membership discovery scans
+    // member slots and, while it now grows well past the old 10-slot cap, cannot
+    // prove completeness for arbitrarily large multisigs. This lets an operator
+    // open any multisig by its account address regardless of where their wallet
+    // sits in the members list.
+    openMultisigByAddress = async (): Promise<NextAction> => {
+        const {address} = await inquirer.prompt({
+            default: "",
+            name: 'address',
+            type: 'input',
+            message: 'Enter the multisig account address (base58):',
+        });
+        if (!address || address.trim().length < 1) return () => this.multisigList();
+        let msPubkey: PublicKey;
+        try {
+            msPubkey = new PublicKey(address.trim());
+        } catch (e) {
+            console.log(chalk.red("Invalid public key."));
+            await continueInq();
+            return () => this.multisigList();
+        }
+        const status = new Spinner("Loading multisig...");
+        status.start();
+        try {
+            const ms = await this.api.getSquadExtended(msPubkey);
+            status.stop();
+            return () => this.multisig(ms);
+        } catch (e) {
+            status.stop();
+            console.log(chalk.red("Could not load a multisig at that address. Check the address and cluster."));
+            await continueInq();
+            return () => this.multisigList();
         }
     };
 
