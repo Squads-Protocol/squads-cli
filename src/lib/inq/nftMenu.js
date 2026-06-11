@@ -71,7 +71,7 @@ export const nftUpdateAuthorityConfirmInq = (newAuthority, numMints, numTransact
         {
             type: 'confirm',
             name: 'confirm',
-            message: `Are you sure you want to change the authority of ${numMints} mints to ${newAuthority}? This will create ${numTransactions} transactions in the multisig.`,
+            message: `Are you sure you want to change the authority of ${numMints} mints to ${newAuthority}? This will create ${numTransactions} transactions in the multisig — each will be activated and your approval vote cast automatically.`,
         }
     ];
     return inquirer.prompt(questions);
@@ -93,7 +93,7 @@ export const nftWithdrawConfirmInq = (destination, numMints, numTransactions) =>
         {
             type: 'confirm',
             name: 'confirm',
-            message: `Are you sure you want to send ${numMints} NFTs to ${destination}? This will create ${numTransactions} transactions in the multisig.`,
+            message: `Are you sure you want to send ${numMints} NFTs to ${destination}? This will create ${numTransactions} transactions in the multisig — each will be activated and your approval vote cast automatically.`,
         }
     ];
     return inquirer.prompt(questions);

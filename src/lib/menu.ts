@@ -597,7 +597,7 @@ class Menu{
     addKey = async (ms: MultisigAccount): Promise<NextAction> => {
         const {memberKey} = await inquirer.prompt({default: "", name: 'memberKey', type: 'input', message: `Enter the public key of the member you want to add (base58):`});
         if (memberKey === "") return () => this.settings(ms);
-        const {yes} = await basicConfirm(`Create transaction to add ${memberKey}?`, false);
+        const {yes} = await basicConfirm(`Create, activate, and cast your approval on a transaction to add ${memberKey}?`, false);
         if (!yes) return () => this.addKey(ms);
         const newKey = new PublicKey(memberKey);
         const status = new Spinner("Creating New Member Transaction...");
@@ -605,7 +605,7 @@ class Menu{
         try {
             await this.api.addKeyTransaction(ms.publicKey, newKey);
             status.stop();
-            console.log("Transaction created!");
+            console.log("Transaction created and activated — your approval vote has been cast.");
             await continueInq();
             const newMs = await this.api.squads.getMultisig(ms.publicKey);
             return () => this.multisig(newMs);
@@ -623,7 +623,7 @@ class Menu{
         choices.push("<- Go back");
         const {memberKey} = await inquirer.prompt({choices, name: 'memberKey', type: 'list', message: `Which key do you want to remove?`});
         if (memberKey === "<- Go back") return () => this.settings(ms);
-        const {yes} = await basicConfirm(`Create transaction to remove ${memberKey}?`, false);
+        const {yes} = await basicConfirm(`Create, activate, and cast your approval on a transaction to remove ${memberKey}?`, false);
         if (!yes) return () => this.removeKey(ms);
         const status = new Spinner("Creating Remove Member Transaction...");
         status.start();
@@ -631,6 +631,7 @@ class Menu{
             const exKey = new PublicKey(memberKey);
             await this.api.removeKeyTransaction(ms.publicKey, exKey);
             status.stop();
+            console.log("Transaction created and activated — your approval vote has been cast.");
             const newMs = await this.api.squads.getMultisig(ms.publicKey);
             await continueInq();
             return () => this.multisig(newMs);
@@ -657,13 +658,14 @@ class Menu{
             },
         });
         if (threshold === "") return () => this.settings(ms);
-        const {yes} = await basicConfirm(`Create transaction to change threshold to ${threshold}?`, false);
+        const {yes} = await basicConfirm(`Create, activate, and cast your approval on a transaction to change threshold to ${threshold}?`, false);
         if (!yes) return () => this.settings(ms);
         const status = new Spinner("Creating Change Threshold Transaction...");
         status.start();
         try {
             await this.api.changeThresholdTransaction(ms.publicKey, threshold);
             status.stop();
+            console.log("Transaction created and activated — your approval vote has been cast.");
             const newMs = await this.api.squads.getMultisig(ms.publicKey);
             await continueInq();
             return () => this.multisig(newMs);
@@ -734,6 +736,7 @@ class Menu{
         const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         console.log(`This will create a safe upgrade authority transfer transaction of ${programId} ${destination.direction} the Squad vault`);
+        console.log("The transaction will also be activated and your approval vote cast automatically.");
         console.log("Program Address: " + chalk.blue(`${programId}`));
         console.log(`Multisig Address: ` + chalk.white(`${ms.publicKey.toBase58()}`));
         console.log(`Current Program Authority: ` + chalk.white(`${currentAuthority}`));
@@ -745,7 +748,7 @@ class Menu{
         try {
             const tx = await this.api.createSafeAuthorityTx(ms.publicKey, new PublicKey(programId), new PublicKey(currentAuthority), destination.key);
             status.stop();
-            console.log(chalk.green("Transaction created!"));
+            console.log(chalk.green("Transaction created and activated — your approval vote has been cast."));
             console.log(chalk.blue("Transaction ID: ") + chalk.white(tx));
             await continueInq();
             return () => this.multisig(ms);
@@ -884,6 +887,7 @@ class Menu{
         const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         console.log(`This will create a transaction for the transfer of the validator (${validatorId}) withdraw authority out of the Squad vault`);
+        console.log("The transaction will also be activated and your approval vote cast automatically.");
         console.log("Validator Address: " + chalk.blue(`${validatorId}`));
         console.log(`Withdraw Authority: ` + chalk.white(`${withdrawAuthority}`));
         console.log(`New Withdraw Authority: ` + chalk.white(`${destination}`));
@@ -894,7 +898,7 @@ class Menu{
         try {
             const tx = await this.api.createTransferWithdrawAuthTx(ms.publicKey, new PublicKey(validatorId), new PublicKey(withdrawAuthority), new PublicKey(destination));
             status.stop();
-            console.log(chalk.green("Transaction created!"));
+            console.log(chalk.green("Transaction created and activated — your approval vote has been cast."));
             console.log(chalk.blue("Transaction ID: ") + chalk.white(tx));
             await continueInq();
             return () => this.multisig(ms);
