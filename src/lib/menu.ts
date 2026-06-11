@@ -319,9 +319,11 @@ class Menu{
         const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         const authority = await this.api.getAuthority(ms.publicKey, tx.authorityIndex);
+        const creatorIsSelf = tx.creator.toBase58() === this.wallet.publicKey.toBase58();
         const txData = [
             {
                 status: Object.keys(tx.status)[0],
+                creator: tx.creator.toBase58() + (creatorIsSelf ? " (you)" : ""),
                 authority: authority.toBase58(),
                 approved: tx.approved.length,
                 rejected: tx.rejected.length,
