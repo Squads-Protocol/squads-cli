@@ -2,33 +2,29 @@ import os from "os";
 import fs from "fs";
 import { ComputeBudgetProgram, type Transaction } from "@solana/web3.js";
 import * as anchor from "@coral-xyz/anchor";
+import type { AnchorWallet } from "../types.js";
 
 const homedir = os.homedir();
 const defaultWalletPath = `${homedir}/.config/solana/id.json`;
 
 class CliWallet {
     walletPath: string;
-    wallet: anchor.Wallet;
+    wallet!: AnchorWallet;
 
     constructor(
         walletInitPath?: string,
-        ledgerWallet?: any | null,
+        ledgerWallet?: AnchorWallet | null,
         computeUnitPrice?: number,
     ) {
         this.walletPath = defaultWalletPath;
         if (walletInitPath && walletInitPath.length > 0) {
             this.walletPath = walletInitPath;
         }
-        let bareWallet;
-        if (ledgerWallet)
-            bareWallet = ledgerWallet;
-        else
-            bareWallet = this.loadCliWallet();
-
+        const bareWallet = ledgerWallet ?? this.loadCliWallet();
         this.wallet = new WalletWithFees(bareWallet, computeUnitPrice);
     }
 
-    loadCliWallet(){
+    loadCliWallet(): AnchorWallet {
         let walletJSON;
         try {
             walletJSON = JSON.parse(fs.readFileSync(this.walletPath, "utf-8"));
@@ -38,22 +34,17 @@ class CliWallet {
             throw e;
         }
         const walletKeypair = anchor.web3.Keypair.fromSecretKey(Uint8Array.from(walletJSON));
-        this.wallet = new anchor.Wallet(walletKeypair);
-        return this.wallet;
+        return new anchor.Wallet(walletKeypair);
     }
 }
 
-export class WalletWithFees implements anchor.Wallet {
-    bareWallet: anchor.Wallet;
+export class WalletWithFees implements AnchorWallet {
+    bareWallet: AnchorWallet;
     computeUnitPrice?: number;
 
-    constructor(bareWallet: anchor.Wallet, computeUnitPrice?: number) {
+    constructor(bareWallet: AnchorWallet, computeUnitPrice?: number) {
         this.bareWallet = bareWallet;
         this.computeUnitPrice = computeUnitPrice;
-    }
-
-    get payer() {
-        return this.bareWallet.payer;
     }
 
     get publicKey() {

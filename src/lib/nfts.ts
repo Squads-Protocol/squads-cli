@@ -1,190 +1,22 @@
-import {NodeWallet, programs} from "@metaplex/js";
 import {TOKEN_PROGRAM_ID} from '@solana/spl-token';
-import {getMultipleAccountsBatch, shortenTextEnd} from "./utils.js";
-import axios from "axios";
-import {utils} from "@coral-xyz/anchor";
-import CLI from "clui";
 import * as anchor from "@coral-xyz/anchor";
-import {Connection, Keypair, PublicKey, TransactionInstruction} from "@solana/web3.js";
+import {Connection, Keypair, PublicKey} from "@solana/web3.js";
 import {
-    Account,
-    AccountInfo,
+    keypairIdentity,
     lamports,
     Metaplex,
-    parseMetadataAccount,
-    toAccountInfo,
     token,
     toMetadata,
     toMetadataAccount,
-    UnparsedAccount,
-    UnparsedMaybeAccount, walletAdapterIdentity
+    UnparsedMaybeAccount,
 } from "@metaplex-foundation/js";
 import * as fs from "fs";
+import { getMultipleAccountsBatch } from "./utils.js";
 import { METAPLEX_PROGRAM_ID, updateMetadataAuthorityIx } from "./metadataInstructions.js";
 import {TokenStandard} from '@metaplex-foundation/mpl-token-metadata';
 
 import Squads from "@sqds/sdk";
-import { metadata } from "figlet";
-import {fail} from "yargs";
-
-const {Progress} = CLI;
-export const checkIsNFT = async (connection: Connection, acc: any) => {
-    try {
-        const edition = await programs.metadata.Metadata.getEdition(connection, acc.account.data.parsed.info.mint)
-        if (edition)
-            return true;
-    } catch (e) {
-        return acc.account.data.parsed.info.tokenAmount.decimals === 0;
-    }
-}
-
-export const getNFTAccounts = async (connection: Connection, publicKey: PublicKey) => {
-    const { value } = await connection.getParsedTokenAccountsByOwner(publicKey, {programId: TOKEN_PROGRAM_ID});
-    const tokenMap = value.map(async ({ account, pubkey }) => {
-        const { data } = account;
-        const pda = await programs.metadata.Metadata.getPDA(data.parsed.info.mint);
-
-        return {
-            account: pubkey,
-            mint: data.parsed.info.mint,
-            amount: data.parsed.info.tokenAmount,
-            metadataPda: pda,
-            metadataPdaUi: pda.toBase58(),
-        };
-    });
-
-    return Promise.all(tokenMap)
-        // filter for amount = 1
-        .then(result => {
-            return result.filter(ta => {
-                return ta.amount.uiAmount > 0;
-            })
-        })
-        // filter by metadata program key
-        .then(filtered => {
-            return getMultipleAccountsBatch(connection, filtered.map(f => f.metadataPda))
-                .then(pdaRes => {
-
-                    return pdaRes.map((mpr: any, i) => {
-                        // try to create the Metadata object
-                        let md = null;
-                        try {
-                            md = new programs.metadata.Metadata(filtered[i].mint, mpr.account);
-                        } catch (e) {
-                            // not a valid metadata
-                            md = null;
-                        }
-
-                        if (md && (md.data.data.creators || md.data.tokenStandard === 1 || filtered[i].amount.decimals === 0)) {
-                            return {
-                                account: filtered[i].account,
-                                metadata: md,
-                                jsonData: {} as any,
-                                tokenModel: {
-                                    amount: filtered[i].amount,
-                                    source: filtered[i].account.toBase58(),
-                                    mint: filtered[i].mint,
-                                    symbol: shortenTextEnd(md.data.data.symbol, 4),
-                                    decimals: 0,
-                                    name: md.data.data.name
-                                },
-                            };
-                        }
-                        return null;
-                    });
-
-                })
-                .then(mac => mac.filter(pmd => pmd));
-        })
-        .then(async (f) => {
-            for (const model of f) {
-                if (model) {
-                    try {
-                        model.jsonData = await axios.get(model.metadata.data.data.uri).then(response => response.data)
-                    } catch (e) {
-                        model.jsonData = model.metadata.data.data
-                        model.jsonData.image = ""
-                    }
-                }
-            }
-            return f;
-        })
-};
-
-export const getOldNFTAccounts = async (connection: Connection, publicKey: PublicKey) => {
-    const { value } = await connection.getParsedTokenAccountsByOwner(publicKey, {programId: TOKEN_PROGRAM_ID});
-    const tokenMap = value.map(async ({ account, pubkey }) => {
-        const { data } = account;
-        const pda = await programs.metadata.Metadata.getPDA(data.parsed.info.mint);
-        return {
-            account: pubkey,
-            mint: data.parsed.info.mint,
-            amount: data.parsed.info.tokenAmount,
-            metadataPda: pda,
-            metadataPdaUi: pda.toBase58(),
-        };
-    });
-
-    return Promise.all(tokenMap)
-        .then(result => {
-            return result.filter(ta => {
-                return ta.mint !== null;
-            })
-        })
-        // filter by metadata program key
-        .then(filtered => {
-            return getMultipleAccountsBatch(connection, filtered.map(f => f.metadataPda))
-                .then(pdaRes => {
-
-                    return pdaRes.map((mpr, i) => {
-                        if (!mpr) {
-                            return null;
-                        }
-                        // try to create the Metadata object
-                        let md = null;
-                        try {
-                            md = new programs.metadata.Metadata(filtered[i].mint, mpr.account);
-                        }
-                        catch(e) {
-                            // not a valid metadata
-                            md = null;
-                        }
-
-                        if (md && (md.data.data.creators || md.data.tokenStandard === 1 || filtered[i].amount.decimals === 0)) {
-                            return {
-                                account: filtered[i].account,
-                                metadata: md,
-                                jsonData: {} as any,
-                                tokenModel: {
-                                    amount: filtered[i].amount,
-                                    source: filtered[i].account.toBase58(),
-                                    mint: filtered[i].mint,
-                                    symbol: shortenTextEnd(md.data.data.symbol, 4),
-                                    decimals: 0,
-                                    name: md.data.data.name
-                                },
-                            };
-                        }
-                        return null;
-                    });
-
-                })
-                .then(mac => mac.filter(pmd => pmd));
-        })
-        .then(async (f) => {
-            for (const model of f) {
-                if (model) {
-                    try {
-                        model.jsonData = await axios.get(model.metadata.data.data.uri).then(response => response.data)
-                    } catch (e) {
-                        model.jsonData = model.metadata.data.data
-                        model.jsonData.image = ""
-                    }
-                }
-            }
-            return f;
-        })
-};
+import type { Mutable, TxMetaPayload } from "../types.js";
 
 type BatchTransactionCreationError = 'approval' | 'activation' | 'none';
 // can fit 250 ixes
@@ -311,91 +143,101 @@ export const prepareBulkUpdate = async (mints: PublicKey[]) => {
 };
 
 export const getMetadataAccount = (mint: PublicKey) => {
-    // to do  - put in real derivation seeds
-    return PublicKey.findProgramAddressSync([utils.bytes.utf8.encode('metadata'), METAPLEX_PROGRAM_ID.toBuffer(), mint.toBuffer()], METAPLEX_PROGRAM_ID)[0];
+    return PublicKey.findProgramAddressSync(
+        [anchor.utils.bytes.utf8.encode('metadata'), METAPLEX_PROGRAM_ID.toBuffer(), mint.toBuffer()],
+        METAPLEX_PROGRAM_ID,
+    )[0];
 };
 
+export const getEditionAccount = (mint: PublicKey) => {
+    return PublicKey.findProgramAddressSync(
+        [
+            anchor.utils.bytes.utf8.encode('metadata'),
+            METAPLEX_PROGRAM_ID.toBuffer(),
+            mint.toBuffer(),
+            anchor.utils.bytes.utf8.encode('edition'),
+        ],
+        METAPLEX_PROGRAM_ID,
+    )[0];
+};
+
+// Fetches metadata accounts in batches (100 per RPC, parallelized) and checks
+// that each one exists and is owned by the metaplex program.
 export const checkAllMetas = async (connection: Connection, mints: PublicKey[]) => {
-    const success = [];
-    const failures = []
-    for (const mint of mints) {
-        const valid = await validateMetadataAccount(connection, getMetadataAccount(mint));
-        if (valid) {
-            success.push(mint);
-        }else{
-            failures.push(mint);
+    const metadataAccounts = mints.map(getMetadataAccount);
+    const fetched = await getMultipleAccountsBatch(connection, metadataAccounts, "confirmed");
+    const success: PublicKey[] = [];
+    const failures: PublicKey[] = [];
+    fetched.forEach((entry, i) => {
+        if (entry && entry.account.lamports > 0 && entry.account.owner.equals(METAPLEX_PROGRAM_ID)) {
+            success.push(mints[i]);
+        } else {
+            failures.push(mints[i]);
         }
-    }
-    return {
-        success,
-        failures
-    }
+    });
+    return { success, failures };
 };
 
-// check that the metadata account exists and is owned by the metaplex program
-export const validateMetadataAccount = async (connection: Connection, metadataAccount: PublicKey) => {
-    const a = await connection.getAccountInfo(metadataAccount);
-    // if account is null, or the account lamports is 0, or if the account owner is not the metaplex_program_id, return false
-    if (!a || a.lamports === 0 || !a.owner.equals(METAPLEX_PROGRAM_ID)) {
-        return false;
-    }
-    return true;
-};
-
-// checks that the current update authority matches the given authority
-export const checkMetadataAuthority = async (connection: Connection, metadataAccount: PublicKey, authority: PublicKey) => {
-    const a = await connection.getAccountInfo(metadataAccount);
-    if (!a || a.lamports === 0 || !a.owner.equals(METAPLEX_PROGRAM_ID)) {
-        return false;
-    }
-    if (a) {
-        // parse the account data based on the Metadata struct
-        const unparsedMaybeAccount =  {
-            ...a,
-            publicKey: metadataAccount,
-            exists: true,
-            lamports: lamports(a.lamports),
-          } as UnparsedMaybeAccount;
-
-        let metadata = toMetadata(toMetadataAccount(unparsedMaybeAccount));
-        if (metadata.updateAuthorityAddress.equals(authority)) {
-            return true;
-        }
-    }
-    return false;
-}
-
+// Same batching as checkAllMetas, plus decodes the metadata and verifies the
+// updateAuthority matches the supplied key.
 export const checkAllMetasAuthority = async (connection: Connection, mints: PublicKey[], authority: PublicKey) => {
-    const success = [];
-    const failures = []
-    for (const mint of mints) {
+    const metadataAccounts = mints.map(getMetadataAccount);
+    const fetched = await getMultipleAccountsBatch(connection, metadataAccounts, "confirmed");
+    const success: PublicKey[] = [];
+    const failures: PublicKey[] = [];
+    fetched.forEach((entry, i) => {
+        const mint = mints[i];
+        if (!entry || entry.account.lamports === 0 || !entry.account.owner.equals(METAPLEX_PROGRAM_ID)) {
+            failures.push(mint);
+            return;
+        }
         try {
-            const valid = await checkMetadataAuthority(connection, getMetadataAccount(mint), authority);
-            if (valid) {
+            const unparsed = {
+                ...entry.account,
+                publicKey: metadataAccounts[i],
+                exists: true,
+                lamports: lamports(entry.account.lamports),
+            } as UnparsedMaybeAccount;
+            const metadata = toMetadata(toMetadataAccount(unparsed));
+            if (metadata.updateAuthorityAddress.equals(authority)) {
                 success.push(mint);
-            }else{
+            } else {
                 failures.push(mint);
             }
-        }catch(e) {
+        } catch {
             failures.push(mint);
         }
-    }
-    return {
-        success,
-        failures
-    }
+    });
+    return { success, failures };
 };
 
-// loads the mint json and maps the mints to publickey
-export const loadNFTMints = async (path: string) => {
-    // load the json file
-    const mintJSON = await fs.readFileSync(path, "utf8");
-    const mints: PublicKey[] = JSON.parse(mintJSON);
-    return mints.map(m => new PublicKey(m));
-}
+// loads the mint json and maps the mints to publickey. The file must contain
+// a JSON array of base58 mint addresses. Duplicates are silently de-duplicated.
+export const loadNFTMints = (path: string): PublicKey[] => {
+    const mintJSON = fs.readFileSync(path, "utf8");
+    const parsed: unknown = JSON.parse(mintJSON);
+    if (!Array.isArray(parsed)) {
+        throw new Error("Mint list file must contain a JSON array of base58 mint addresses");
+    }
+    const seen = new Set<string>();
+    const mints: PublicKey[] = [];
+    parsed.forEach((entry, i) => {
+        if (typeof entry !== "string" || entry.length === 0) {
+            throw new Error(`Mint list entry ${i} is not a non-empty string`);
+        }
+        if (seen.has(entry)) return;
+        seen.add(entry);
+        try {
+            mints.push(new PublicKey(entry));
+        } catch {
+            throw new Error(`Mint list entry ${i} ("${entry}") is not a valid base58 public key`);
+        }
+    });
+    return mints;
+};
 
 // creates a squads tx meta instruction for the tx to be referred later by type
-export const sendTxMetaIx = async (msPDA: PublicKey, txPDA: PublicKey, member: PublicKey, dataObj: any, txMetaProgramId: PublicKey) => {
+export const sendTxMetaIx = (msPDA: PublicKey, txPDA: PublicKey, member: PublicKey, dataObj: TxMetaPayload, txMetaProgramId: PublicKey) => {
     const trackMetaSig = anchor.utils.sha256.hash(
         "global:track_meta"
       );
@@ -438,7 +280,7 @@ export const sendTxMetaIx = async (msPDA: PublicKey, txPDA: PublicKey, member: P
 export const estimateBulkUpdate = async (sdk: Squads, connection: Connection, buckets: PublicKey[][], testKey: PublicKey) => {
     // iterate through each bucket, and create a transaction, then create an instruction for each item in each bucket
     let ixBytes = 0;
-    const metaIx = await updateMetadataAuthorityIx(testKey, testKey, testKey);
+    const metaIx = updateMetadataAuthorityIx(testKey, testKey, testKey);
     const testIx = await sdk.buildAddInstruction(testKey, testKey, metaIx, 0);
     ixBytes = testIx.data.length;
     // reduce the buckets to the total number of instructions
@@ -465,17 +307,20 @@ export const checkIfMintsAreValidAndOwnedByVault = async (connection: Connection
             mints: mints
         });
         const allTokens = await connection.getParsedTokenAccountsByOwner(vault, {programId: TOKEN_PROGRAM_ID});
-        for (const nft of loadedNFTs as any) {
-            const index = loadedNFTs.indexOf(nft);
-            if (!nft)
-                failures.push(mints[index].toBase58())
-            else {
-                const found = allTokens.value.filter((value) => value.account.data.parsed.info.tokenAmount.uiAmount > 0).find((value) => value.account.data.parsed.info.mint === nft?.mintAddress.toBase58())
-                if (!found)
-                    failures.push(mints[index].toBase58())
-                else
-                    success.push(nft?.mintAddress)
+        for (let index = 0; index < loadedNFTs.length; index++) {
+            const nft = loadedNFTs[index];
+            const mint = mints[index];
+            if (!nft) {
+                failures.push(mint.toBase58());
+                continue;
             }
+            const found = allTokens.value
+                .filter((value) => value.account.data.parsed.info.tokenAmount.uiAmount > 0)
+                .find((value) => value.account.data.parsed.info.mint === mint.toBase58());
+            if (!found)
+                failures.push(mint.toBase58());
+            else
+                success.push(mint);
         }
     } catch (e) {
         console.log(e)
@@ -495,15 +340,10 @@ export const createWithdrawNftTx = async (squadsSdk: Squads, multisig: PublicKey
     let hasError = false;
     const failures = [];
 
-    const keypair = new Keypair({
-        publicKey: vault.toBytes(),
-        secretKey: new Keypair().secretKey,
-    })
-    const garbageWallet = new NodeWallet(keypair)
-
-    const metaplex = Metaplex.make(connection).use(
-        walletAdapterIdentity(garbageWallet)
-    )
+    // The metaplex SDK needs *some* identity to derive PDAs, but the actual
+    // signing happens via Squads. A throwaway keypair is fine here.
+    const throwawayKeypair = Keypair.generate();
+    const metaplex = Metaplex.make(connection).use(keypairIdentity(throwawayKeypair));
 
     while (queue.length > 0) {
         const mint = queue.shift();
@@ -519,7 +359,7 @@ export const createWithdrawNftTx = async (squadsSdk: Squads, multisig: PublicKey
             : undefined
 
         // EDGE Case fixing
-        const mutableNFT = nft as any
+        const mutableNFT = nft as Mutable<typeof nft>;
         if (mutableNFT.model === "sft" && !mutableNFT.tokenStandard)
             mutableNFT.tokenStandard = TokenStandard.FungibleAsset
 
@@ -565,7 +405,7 @@ export const createWithdrawNftTx = async (squadsSdk: Squads, multisig: PublicKey
                 : undefined
 
             // EDGE Case fixing
-            const mutableNFT = nft as any
+            const mutableNFT = nft as Mutable<typeof nft>;
             if (mutableNFT.model === "sft" && !mutableNFT.tokenStandard)
                 mutableNFT.tokenStandard = TokenStandard.FungibleAsset
 

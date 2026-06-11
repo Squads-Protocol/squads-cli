@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import clear from 'clear';
 import chalk from 'chalk';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 import Menu from "./lib/menu.js";
 import CliWallet from './lib/wallet.js';
@@ -11,7 +13,11 @@ import yargs from 'yargs';
 import {hideBin} from 'yargs/helpers'
 import {parseLedgerWallet} from "@marinade.finance/ledger-utils";
 
-const VERSION = "2.1.3";
+// Read package.json at runtime so --version stays in sync with the published
+// package. __dirname points at the compiled bin/ directory, so ../package.json
+// resolves whether installed globally (node_modules/@sqds/cli) or run from src.
+const pkg = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf8")) as { version: string };
+const VERSION = pkg.version;
 
 const argv = yargs(hideBin(process.argv)).options({
     cluster: { type: 'string'},
@@ -30,8 +36,13 @@ const load = async (
     clear();
     console.log(chalk.yellow('Starting Squads CLI...') + " Follow the prompts to get started")
     const {walletPath} = await SetupWallet();
-    const ledgerWallet = await parseLedgerWallet(walletPath)
-    const cliWallet = new CliWallet(walletPath, ledgerWallet, computeUnitPrice);
+    // parseLedgerWallet matches only the literal "usb://ledger" prefix; normalize
+    // case so "USB://Ledger" etc. is also detected as a ledger URL.
+    const normalizedWalletPath = walletPath.toLowerCase().startsWith("usb://ledger")
+        ? "usb://ledger" + walletPath.slice("usb://ledger".length)
+        : walletPath;
+    const ledgerWallet = await parseLedgerWallet(normalizedWalletPath);
+    const cliWallet = new CliWallet(normalizedWalletPath, ledgerWallet, computeUnitPrice);
     let cliConnection;
     if(!initCluster){
         const {cluster} = await SetupCluster();
@@ -40,9 +51,9 @@ const load = async (
         cliConnection = new CliConnection(initCluster);
     }
 
-    // start the menu
+    // start the menu state machine
     const cli = new Menu(cliWallet, cliConnection, programId, programManagerId, txMetaProgramId);
-    cli.top();
+    await cli.run();
 };
 
 const help = async () => {
@@ -71,6 +82,21 @@ if (argv.txMetaProgramId && argv.txMetaProgramId.length > 0) {
 if (typeof argv.computeUnitPrice == "number") {
     computeUnitPrice = argv.computeUnitPrice;
 }
+
+// Graceful exit on Ctrl+C — inquirer 8 throws ExitPromptError on SIGINT which
+// otherwise surfaces as an ugly unhandled rejection.
+process.on("SIGINT", () => {
+    console.log(chalk.blue("\nGoodbye!"));
+    process.exit(0);
+});
+process.on("unhandledRejection", (reason) => {
+    const msg = reason instanceof Error ? reason.message : String(reason);
+    if (/ExitPromptError|force closed the prompt/i.test(msg)) {
+        process.exit(0);
+    }
+    console.error(chalk.red("\nUnexpected error:"), reason);
+    process.exit(1);
+});
 
 if (argv.help){
     help();
