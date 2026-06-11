@@ -506,14 +506,21 @@ class Menu{
                     executeTx.add(additionalComputeBudgetInstruction, ix);
                     const signed = await this.wallet.signTransaction(executeTx);
                     const txid = await this.api.connection.sendRawTransaction(signed.serialize());
-                    await this.api.connection.confirmTransaction(txid, "processed");
+                    // Wait for "confirmed" (not "processed") before reporting success:
+                    // single-instruction control changes (membership/threshold/authority
+                    // transfers) take this fast path, and processed state can disappear
+                    // on fork churn, making a governance change look durably complete
+                    // when it is not.
+                    await this.api.connection.confirmTransaction(txid, "confirmed");
                 }
                 status.stop();
-                const updatedTx = await this.api.squads.getTransaction(tx.publicKey);
+                // Re-read at "confirmed" so the success message and refreshed state
+                // reflect durable finality rather than the SDK's "processed" default.
+                const updatedTx = await this.api.squads.getTransaction(tx.publicKey, "confirmed");
                 const newInd = txs.findIndex(t => t.publicKey.toBase58() === tx.publicKey.toBase58());
                 txs.splice(newInd, 1, updatedTx);
                 console.log("Transaction executed");
-                const updatedMs = await this.api.squads.getMultisig(ms.publicKey);
+                const updatedMs = await this.api.squads.getMultisig(ms.publicKey, "confirmed");
                 await continueInq();
                 return () => this.transaction(updatedTx, updatedMs, txs);
             } catch (e) {
