@@ -2,14 +2,27 @@ import {Connection, LAMPORTS_PER_SOL, PublicKey} from "@solana/web3.js";
 import {TOKEN_PROGRAM_ID} from "@solana/spl-token";
 import {TokenListProvider} from "@solana/spl-token-registry";
 import {lamports, toMetadata, toMetadataAccount, UnparsedMaybeAccount} from "@metaplex-foundation/js";
+import {TokenStandard} from "@metaplex-foundation/mpl-token-metadata";
 import {getMultipleAccountsBatch, shortenTextEnd} from "./utils.js";
 import {getEditionAccount, getMetadataAccount} from "./nfts.js";
 import type {AssetBundle, TokenAsset} from "../types.js";
 
 const WRAPPED_SOL_MINT = "So11111111111111111111111111111111111111112";
 
+// Token standards that represent non-fungible assets. Anything else (Fungible,
+// FungibleAsset, or metadata without a token standard) is treated as fungible.
+const NON_FUNGIBLE_STANDARDS = new Set<TokenStandard>([
+    TokenStandard.NonFungible,
+    TokenStandard.NonFungibleEdition,
+    TokenStandard.ProgrammableNonFungible,
+    TokenStandard.ProgrammableNonFungibleEdition,
+]);
+
 // Returns SOL + SPL token holdings for `userKey`. NFTs (detected by Edition
-// account existence or decimals=0) are excluded from the displayed list.
+// account existence, or by decoded non-fungible token-standard metadata) are
+// excluded from the displayed list. Decimals are NOT used as an NFT signal:
+// ordinary zero-decimal fungible/semi-fungible mints are real custody and must
+// stay visible.
 //
 // Previously this fetched metadata + edition + off-chain JSON per token
 // sequentially (3N round-trips). Now it derives all PDAs up front and batches
@@ -83,6 +96,11 @@ export const getAssets = async (connection: Connection, userKey: PublicKey): Pro
                         lamports: lamports(metaEntry.account.lamports),
                     } as UnparsedMaybeAccount;
                     const md = toMetadata(toMetadataAccount(unparsed));
+                    // Drop mints positively identified as non-fungible by their
+                    // token standard, even without an edition account.
+                    if (md.tokenStandard !== null && NON_FUNGIBLE_STANDARDS.has(md.tokenStandard)) {
+                        return;
+                    }
                     usableTokens.push({
                         amount, source, mint: mintStr,
                         symbol: md.symbol,
