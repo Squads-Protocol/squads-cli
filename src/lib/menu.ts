@@ -392,19 +392,25 @@ class Menu{
                             const signed = await this.wallet.signTransaction(executeIxTx);
                             const txid = await this.api.connection.sendRawTransaction(signed.serialize(), {skipPreflight: true});
                             console.log(`ix ${ixIndex} signature: ${txid}`);
-                            await this.api.connection.confirmTransaction(txid, "confirmed");
+                            await this.api.connection.confirmTransaction({signature: txid, blockhash, lastValidBlockHeight}, "confirmed");
                             await this.api.squads.getTransaction(tx.publicKey);
                         } catch (_e) {
-                            console.log("Error executing instruction, trying it again");
-                            await this.api.squads.getTransaction(tx.publicKey);
-                            const ix = await this.api.executeInstructionBuilder(tx.publicKey, ixPDA);
-                            const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
-                            const executeIxTx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.wallet.publicKey});
-                            executeIxTx.add(additionalComputeBudgetInstruction, ix);
-                            const signed = await this.wallet.signTransaction(executeIxTx);
-                            const txid = await this.api.connection.sendRawTransaction(signed.serialize(), {skipPreflight: true});
-                            console.log(`ix ${ixIndex} retry signature: ${txid}`);
-                            await this.api.connection.confirmTransaction(txid, "confirmed");
+                            // The confirmation may have failed (e.g. timeout) even though the
+                            // instruction landed on-chain, so check fresh state before retrying.
+                            const refreshed = await this.api.squads.getTransaction(tx.publicKey);
+                            if (refreshed.executedIndex >= ixIndex) {
+                                console.log(`ix ${ixIndex} landed on-chain despite the confirmation error, continuing`);
+                            } else {
+                                console.log("Error executing instruction, trying it again");
+                                const ix = await this.api.executeInstructionBuilder(tx.publicKey, ixPDA);
+                                const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
+                                const executeIxTx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.wallet.publicKey});
+                                executeIxTx.add(additionalComputeBudgetInstruction, ix);
+                                const signed = await this.wallet.signTransaction(executeIxTx);
+                                const txid = await this.api.connection.sendRawTransaction(signed.serialize(), {skipPreflight: true});
+                                console.log(`ix ${ixIndex} retry signature: ${txid}`);
+                                await this.api.connection.confirmTransaction({signature: txid, blockhash, lastValidBlockHeight}, "confirmed");
+                            }
                         }
                         await this.api.squads.getTransaction(tx.publicKey);
                         successfullyExecuted++;
@@ -431,6 +437,7 @@ class Menu{
                 console.log(`Executed ${successfullyExecuted} instructions`);
                 console.log(`Terminated remaining execution because of an error: ${JSON.stringify(e)}`);
                 const updatedTx = await this.api.squads.getTransaction(tx.publicKey);
+                console.log(`On-chain executedIndex: ${updatedTx.executedIndex} of ${updatedTx.instructionIndex} instructions`);
                 await continueInq();
                 return () => this.transaction(updatedTx, ms, txs);
             }
