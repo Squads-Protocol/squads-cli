@@ -34,10 +34,10 @@ export const getAssets = async (connection: Connection, userKey: PublicKey): Pro
         name: "Solana",
     }];
 
-    // Exclude wrapped-SOL token accounts (the native SOL row already covers it).
-    const splAccounts = parsedAccount.value.filter(
-        a => a.account.data.parsed.info.mint !== WRAPPED_SOL_MINT
-    );
+    // Include wrapped-SOL token accounts — the native SOL row only reflects
+    // lamports from getBalance, so WSOL held in SPL token accounts must be
+    // listed separately or vault custody is understated.
+    const splAccounts = parsedAccount.value;
 
     if (splAccounts.length > 0) {
         const mints = splAccounts.map(a => new PublicKey(a.account.data.parsed.info.mint));
@@ -55,6 +55,18 @@ export const getAssets = async (connection: Connection, userKey: PublicKey): Pro
             const decimals: number = acc.account.data.parsed.info.tokenAmount.decimals;
             const amount: number = acc.account.data.parsed.info.tokenAmount.uiAmount;
             const source = acc.pubkey.toBase58();
+
+            // Wrapped SOL: render explicitly so it is distinguishable from the
+            // native SOL row (and never hits the NFT heuristic or metadata lookup).
+            if (mintStr === WRAPPED_SOL_MINT) {
+                usableTokens.push({
+                    amount, source, mint: mintStr,
+                    symbol: 'wSOL',
+                    decimals,
+                    name: "Wrapped SOL",
+                });
+                return;
+            }
 
             // NFT heuristic: has an Edition account OR decimals === 0.
             const isNFT = editionAccounts[i] !== null || decimals === 0;
