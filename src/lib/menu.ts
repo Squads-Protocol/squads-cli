@@ -33,7 +33,6 @@ import {
     createATAInq,
     nftMainInq,
     nftUpdateAuthorityInq,
-    nftValidateMetasInq,
     nftUpdateAuthorityConfirmInq,
     nftUpdateAuthorityConfirmIncomingInq,
     nftUpdateShowFailedMintsInq,
@@ -54,7 +53,6 @@ import { MULTISIG, SETTINGS, TOP, TX_ACTION } from "./menuActions.js";
 
 import { shortenTextEnd } from './utils.js';
 import {
-    checkAllMetas,
     checkAllMetasAuthority,
     checkIfMintsAreValidAndOwnedByVault,
     createAuthorityUpdateTx, createWithdrawNftTx,
@@ -166,6 +164,11 @@ class Menu{
         try {
             this.multisigs = await this.api.getSquads(this.wallet.publicKey);
             spinner.stop();
+            if (this.multisigs.length > 0) {
+                console.log(chalk.yellow(`Discovered ${this.multisigs.length} multisig membership(s) for this wallet.`));
+                console.log(chalk.gray("Note: multisig membership is permissionless — anyone can create a multisig that lists your wallet, so this discovered list may include decoy/spam entries. To reach a specific multisig you trust, use \"Open multisig by address\"."));
+                console.log("");
+            }
             const testList = await loadAuthorities(this.multisigs);
             const oIndex = testList.length;
             testList.push({ name: "Open multisig by address ->", value: oIndex, short: "Open by address" });
@@ -529,6 +532,41 @@ class Menu{
         }
     };
 
+    // Fetches and renders the instructions attached to a transaction so a
+    // reviewer can see exactly what they are approving/executing — the on-chain
+    // account records them but the review screen previously showed only a count.
+    private renderTransactionInstructions = async (tx: TransactionAccount): Promise<void> => {
+        if (tx.instructionIndex < 1) return;
+        const spinner = new Spinner("Loading instructions for review...");
+        spinner.start();
+        try {
+            const ixPDAs = Array.from({ length: tx.instructionIndex }, (_, i) =>
+                getIxPDA(tx.publicKey, new anchor.BN(i + 1), this.api.programId)[0],
+            );
+            const ixs = await this.api.squads.getInstructions(ixPDAs);
+            spinner.stop();
+            ixs.forEach((ix, i) => {
+                const label = chalk.blue(`Instruction ${i + 1}/${tx.instructionIndex}`) + (i < tx.executedIndex ? chalk.gray(" (already executed)") : "");
+                if (!ix) {
+                    console.log(label + chalk.red(" — could not load"));
+                    return;
+                }
+                console.log(label);
+                console.log("  Program: " + chalk.white(ix.programId.toBase58()));
+                const hex = Buffer.from(ix.data).toString("hex");
+                console.log("  Data: " + chalk.gray(`${ix.data.length} bytes` + (hex ? ` (0x${hex.length > 256 ? hex.slice(0, 256) + "…" : hex})` : "")));
+                console.table(ix.keys.map((k) => ({
+                    Account: k.pubkey.toBase58(),
+                    Signer: k.isSigner,
+                    Writable: k.isWritable,
+                })));
+            });
+        } catch (_e) {
+            spinner.stop();
+            console.log(chalk.red("Could not load transaction instructions for review."));
+        }
+    };
+
     transaction = async (tx: TransactionAccount, ms: MultisigAccount, txs: TransactionAccount[]): Promise<NextAction> => {
         const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
@@ -549,6 +587,10 @@ class Menu{
         console.table(txData);
         if (tx.executedIndex > 0 && tx.executedIndex < tx.instructionIndex) {
             console.log(chalk.yellow(`Partially executed: ${tx.executedIndex}/${tx.instructionIndex} instructions done — Execute will resume from instruction ${tx.executedIndex + 1}.`));
+        }
+        await this.renderTransactionInstructions(tx);
+        if (tx.authorityIndex === 0) {
+            console.log(chalk.yellow("This is a multisig settings/governance transaction (authority index 0). Executing it advances the multisig config and will invalidate any other settings proposal created before it. Confirm the instruction above is the change you intend."));
         }
         if(tx.status.active){
             console.log(chalk.red("Be sure to review all transaction instructions before approving or executing!"));
@@ -1118,32 +1160,38 @@ class Menu{
     nftAuthorityChangeIncoming = async (ms: MultisigAccount, mintList: PublicKey[], newAuthority: PublicKey, vault: PublicKey, authorityIndex: number): Promise<NextAction> => {
         clear();
         this.header(vault);
-        const {validate} = await nftValidateMetasInq();
-        let error = false;
-        if (validate) {
-            // run validation
-            const status = new Spinner("Checking derived metadata accounts...");
-            status.start();
-            const validateResult = await checkAllMetas(this.api.connection, mintList);
-            status.stop();
-            if (validateResult.failures.length > 0) {
-                console.log(chalk.red(`There were some errors validating ${validateResult.failures.length} metadata accounts for certain mints:`));
-                console.log(JSON.stringify(validateResult.failures));
-                error = true;
-                await continueInq();
-            } else {
-                // succesfully validated all the metadata accounts
-                console.log(`Successfully validated ${validateResult.success.length} metadata accounts`);
-                await continueInq();
-            }
+
+        // Validation is mandatory on this direct-sign path: the connected wallet
+        // signs each metadata-authority update itself, so every mint must both
+        // have a real metadata account AND already be controlled by this wallet.
+        // checkAllMetasAuthority verifies both in one batched pass — surfacing a
+        // mint the wallet doesn't control up front rather than failing mid-batch.
+        const status = new Spinner("Validating metadata accounts and current update authority...");
+        status.start();
+        const validateResult = await checkAllMetasAuthority(this.api.connection, mintList, this.api.wallet.publicKey);
+        status.stop();
+        if (validateResult.failures.length > 0) {
+            console.log(chalk.red(`${validateResult.failures.length} of ${mintList.length} mint(s) cannot be updated: metadata is missing or the connected wallet is not the current update authority.`));
+            console.log(JSON.stringify(validateResult.failures.map((mint) => mint.toBase58())));
+            await continueInq();
+            return () => this.nfts(ms, authorityIndex);
         }
+        console.log(chalk.green(`Validated ${validateResult.success.length} metadata account(s); the connected wallet is the current update authority for all of them.`));
+
+        // Show the exact metadata PDAs that will be reassigned so the operator can
+        // verify the targets before signing anything.
+        console.log("The following metadata accounts will be reassigned:");
+        console.table(mintList.map((mint) => ({
+            Mint: mint.toBase58(),
+            "Metadata PDA": getMetadataAccount(mint).toBase58(),
+        })));
+        console.log("New update authority: " + chalk.green(newAuthority.toBase58()));
         console.log('');
+
         let continueProcessing = false;
-        if (!error) {
-            const {confirm} = await nftUpdateAuthorityConfirmIncomingInq(newAuthority.toBase58(), mintList.length);
-            if (confirm) {
-                continueProcessing = true;
-            }
+        const {confirm} = await nftUpdateAuthorityConfirmIncomingInq(newAuthority.toBase58(), mintList.length);
+        if (confirm) {
+            continueProcessing = true;
         }
         if (continueProcessing) {
             await this.api.warnIfLowBalance();

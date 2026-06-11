@@ -1,7 +1,7 @@
 {
   "name": "@sqds/cli",
   "version": "2.3.19",
-  "description": "",
+  "description": "CLI Tool for interacting with the Squads V3 Multisig Solana Program",
   "main": "bin/index.js",
   "files": [
     "bin/",
@@ -10,7 +10,8 @@
   ],
   "scripts": {
     "build": "tsc",
-    "prepack": "rm -rf bin && npm run build",
+    "verify-clean": "test -z \"$(git status --porcelain -- src package.json tsconfig.json)\" || (echo 'ERROR: uncommitted changes to source (src/, package.json, tsconfig.json). Commit or stash before packing/publishing so the shipped bin/ is built from reviewed, committed source.' && exit 1)",
+    "prepack": "npm run verify-clean && rm -rf bin && npm run build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint 'src/**/*.ts'",
     "test": "echo \"Error: no test specified\" && exit 1"

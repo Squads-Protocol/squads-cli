@@ -213,11 +213,19 @@ class API{
         const KEYS_OFFSET = 58;
         const SCAN_BATCH = 16;
         const MIN_SCAN_POSITIONS = 64;
+        // Cap the permissionless discovery set. Anyone can create a multisig that
+        // names this wallet, so the discovered list is attacker-influenceable;
+        // bound it and tell the operator to use the direct-address path for a
+        // specific known multisig rather than relying on this list.
+        const MAX_DISCOVERED = 50;
         const walletKey = this.wallet.publicKey.toBase58();
         const seen = new Set<string>();
-        const msPDAs: PublicKey[] = [];
+        // The memcmp query already returns the fully decoded `ms` account, so we
+        // build the MultisigAccount results directly from it — no per-PDA refetch.
+        const found: MultisigAccount[] = [];
         let position = 0;
         let keepScanning = true;
+        let truncated = false;
         while (keepScanning) {
             const queries = Array.from({ length: SCAN_BATCH }, (_, i) =>
                 this.program.account.ms.all([
@@ -232,13 +240,17 @@ class API{
                     const key = entry.publicKey.toBase58();
                     if (seen.has(key)) continue;
                     seen.add(key);
-                    msPDAs.push(entry.publicKey);
+                    if (found.length >= MAX_DISCOVERED) { truncated = true; continue; }
+                    found.push({ ...entry.account, publicKey: entry.publicKey } as unknown as MultisigAccount);
                 }
             }
             position += SCAN_BATCH;
-            keepScanning = position < MIN_SCAN_POSITIONS || batchHits > 0;
+            keepScanning = (position < MIN_SCAN_POSITIONS || batchHits > 0) && !truncated;
         }
-        return Promise.all(msPDAs.map(k => this.getSquadExtended(k)));
+        if (truncated) {
+            console.log(chalk.yellow(`\nDiscovered more than ${MAX_DISCOVERED} multisigs that include this wallet; showing the first ${MAX_DISCOVERED}. Multisig membership is permissionless, so some entries may be decoys — use "Open multisig by address" to reach a specific known multisig.`));
+        }
+        return found;
     };
 
     getTransactions = async (ms: MultisigAccount): Promise<TransactionAccount[]> => {

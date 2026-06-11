@@ -1,0 +1,29 @@
+name: ci
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Build from clean source
+        run: npm run build
+      # Runs prepack (verify-clean + rebuild) and validates the tarball contents
+      # against the committed source — the shipped bin/ is rebuilt here from a
+      # clean checkout, so published installs can't ship untracked local output.
+      - name: Verify package builds from committed source
+        run: npm pack --dry-run
