@@ -277,8 +277,12 @@ class Menu{
             console.log("Transaction created!");
             console.log("Transaction key: " + chalk.blue(tx.publicKey.toBase58()));
             await continueInq();
-            const txs = await this.api.getTransactions(ms);
-            return () => this.transactions(txs, ms);
+            // Re-fetch the multisig: createTransaction bumped transactionIndex on-chain,
+            // and getTransactions derives the list from that index. Using the pre-create
+            // snapshot would omit the proposal just created.
+            const freshMs = await this.api.getSquadExtended(ms.publicKey);
+            const txs = await this.api.getTransactions(freshMs);
+            return () => this.transactions(txs, freshMs);
         }
         if (assemble.indexOf("Enter") == 0) {
             const {authority} = await createTransactionInq();
@@ -351,8 +355,15 @@ class Menu{
                     console.log("Draft transaction created. Activate and approve it from the transactions menu after review.");
                 }
                 await continueInq();
-                const txs = await this.api.getTransactions(ms);
-                return () => this.transactions(txs, ms);
+                // Re-fetch the multisig so the just-created proposal (which bumped
+                // transactionIndex on-chain) is included in the list, then route the
+                // operator straight into its detail screen so they can immediately
+                // review or cancel the live, already-activated-and-approved proposal.
+                const freshMs = await this.api.getSquadExtended(ms.publicKey);
+                const txs = await this.api.getTransactions(freshMs);
+                const createdTx = txs.find(t => t.publicKey.toBase58() === tx.publicKey.toBase58());
+                if (createdTx) return () => this.transaction(createdTx, freshMs, txs);
+                return () => this.transactions(txs, freshMs);
             } catch (e) {
                 console.log("Error", e);
                 status.stop();
