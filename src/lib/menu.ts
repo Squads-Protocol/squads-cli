@@ -10,7 +10,7 @@ import path from 'path';
 
 import { DEFAULT_MULTISIG_PROGRAM_ID, DEFAULT_PROGRAM_MANAGER_PROGRAM_ID, getIxPDA } from '@sqds/sdk';
 import { TXMETA_PROGRAM_ID } from './constants.js';
-import {ComputeBudgetProgram, PublicKey, Transaction} from '@solana/web3.js';
+import {ComputeBudgetProgram, PACKET_DATA_SIZE, PublicKey, Transaction} from '@solana/web3.js';
 import {
     mainMenu,
     viewMultisigsMenu,
@@ -72,6 +72,18 @@ const Spinner = CLI.Spinner;
 // per-tx maximum because some multisig-wrapped instructions (program upgrade
 // authority changes, large CPI calls) can hit the default 200k budget.
 const EXECUTE_IX_COMPUTE_UNIT_LIMIT = 1_400_000;
+
+// Per-transaction byte budget used to decide how execution is packed. We
+// measure the exact fully-serialized wire size of each candidate transaction
+// (message + signatures) and compare it against Solana's hard cap,
+// PACKET_DATA_SIZE (1232 bytes) — the same limit the network enforces on the
+// wire. We reserve a 33-byte safety margin below the cap: enough for one extra
+// account key (32 bytes) plus a single byte (e.g. a shortvec length or a u8
+// index bump), so a transaction that measures as "fits" still lands cleanly.
+// Whether a multisig transaction can execute atomically — and how many
+// executeInstruction CPIs fit in one tx when it can't — is a function of this
+// serialized size, not the raw instruction count.
+const EXECUTE_TX_BYTE_BUDGET = PACKET_DATA_SIZE - 33;
 
 // Each menu method returns a thunk for the next menu (or null to exit).
 // The outer run() loop awaits each thunk in sequence, so the parent frame
@@ -315,6 +327,95 @@ class Menu{
         }
     };
 
+    // Exact fully-serialized wire size of `tx` (message + signature section),
+    // computed without signing it (so it works for interactive wallets like
+    // Ledger). This is the value the network checks against PACKET_DATA_SIZE.
+    // Returns null when the message can't even be compiled — e.g. the account
+    // list overflows the message format — which definitively means it cannot
+    // fit in a single transaction.
+    private serializedTxSize = (tx: Transaction): number | null => {
+        try {
+            const message = tx.compileMessage();
+            // message bytes + shortvec signature count (1 byte for < 128 signers)
+            // + 64 bytes per signature.
+            return message.serialize().length + 1 + message.header.numRequiredSignatures * 64;
+        } catch {
+            return null;
+        }
+    };
+
+    // Signs, sends, and confirms one execute transaction. Throws if the tx landed
+    // on chain but failed: confirmTransaction resolves (does not throw) for an
+    // errored-but-confirmed tx, so the failure only surfaces in value.err.
+    // Without this check the loop would count a failed batch as executed.
+    private sendAndConfirmExecuteTx = async (ixes: anchor.web3.TransactionInstruction[]): Promise<void> => {
+        const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
+        const tx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.wallet.publicKey});
+        tx.add(...ixes);
+        const signed = await this.wallet.signTransaction(tx);
+        const txid = await this.api.connection.sendRawTransaction(signed.serialize(), {skipPreflight: true});
+        console.log(`signature: ${txid}`);
+        const {value} = await this.api.connection.confirmTransaction({signature: txid, blockhash, lastValidBlockHeight}, "confirmed");
+        if (value.err) throw new Error(`Execution failed on chain: ${JSON.stringify(value.err)}`);
+    };
+
+    // Executes instructions [executedFrom, lastIndex] of a multisig transaction
+    // that is too large to run atomically, by greedily packing as many
+    // executeInstruction CPIs as fit under EXECUTE_TX_BYTE_BUDGET into each
+    // Solana tx. The program requires strict in-order execution (each
+    // executeInstruction is constrained to instruction_index == executed_index+1
+    // and advances executed_index by one), but multiple CPIs can share one tx:
+    // a later instruction sees the executed_index bump written by an earlier one
+    // in the same tx. Each packed tx is atomic on its own; a failure aborts the
+    // run and leaves a committed prefix, so onBatchConfirmed reports progress as
+    // it goes. Returns nothing — callers track progress via the callback.
+    private executeInstructionsBatched = async (
+        txPDA: PublicKey,
+        executedFrom: number,
+        lastIndex: number,
+        computeBudgetIx: anchor.web3.TransactionInstruction,
+        onBatchConfirmed: (count: number) => void,
+    ): Promise<void> => {
+        // Each builder call costs RPC, so build every executeInstruction once,
+        // in ascending order, then pack from the cached list.
+        const execIxs: anchor.web3.TransactionInstruction[] = [];
+        for (let k = executedFrom; k <= lastIndex; k++) {
+            const [ixPDA] = getIxPDA(txPDA, new anchor.BN(k), this.api.programId);
+            execIxs.push(await this.api.executeInstructionBuilder(txPDA, ixPDA));
+        }
+        // A throwaway blockhash for size measurement only (its value never affects
+        // the byte count). Real sends fetch a fresh blockhash each time.
+        const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
+
+        let cursor = 0;
+        while (cursor < execIxs.length) {
+            const batch: anchor.web3.TransactionInstruction[] = [];
+            while (cursor + batch.length < execIxs.length) {
+                const candidate = execIxs[cursor + batch.length];
+                const trial = new Transaction({blockhash, lastValidBlockHeight, feePayer: this.wallet.publicKey});
+                trial.add(computeBudgetIx, ...batch, candidate);
+                const size = this.serializedTxSize(trial);
+                if (size === null || size > EXECUTE_TX_BYTE_BUDGET) break;
+                batch.push(candidate);
+            }
+            // Guarantee forward progress: if not even one instruction fits, send
+            // it alone so the real size/on-chain failure surfaces (no infinite loop).
+            if (batch.length === 0) batch.push(execIxs[cursor]);
+
+            const firstIdx = executedFrom + cursor;
+            const lastIdx = firstIdx + batch.length - 1;
+            console.log(`executing instructions ${firstIdx}-${lastIdx} (${batch.length} in one tx)`);
+            try {
+                await this.sendAndConfirmExecuteTx([computeBudgetIx, ...batch]);
+            } catch (_e) {
+                console.log("Error executing instruction batch, trying it again");
+                await this.sendAndConfirmExecuteTx([computeBudgetIx, ...batch]);
+            }
+            onBatchConfirmed(batch.length);
+            cursor += batch.length;
+        }
+    };
+
     transaction = async (tx: TransactionAccount, ms: MultisigAccount, txs: TransactionAccount[]): Promise<NextAction> => {
         const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
@@ -380,43 +481,59 @@ class Menu{
                 units: EXECUTE_IX_COMPUTE_UNIT_LIMIT,
             });
             try {
-                if (tx.instructionIndex > 3) {
-                    for (let ixIndex = tx.executedIndex + 1; ixIndex <= tx.instructionIndex; ixIndex++) {
-                        const [ixPDA] = getIxPDA(tx.publicKey, new anchor.BN(ixIndex), this.api.programId);
-                        console.log("invoking instruction ", ixIndex);
-                        try {
-                            const ix = await this.api.executeInstructionBuilder(tx.publicKey, ixPDA);
-                            const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
-                            const executeIxTx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.wallet.publicKey});
-                            executeIxTx.add(additionalComputeBudgetInstruction, ix);
-                            const signed = await this.wallet.signTransaction(executeIxTx);
-                            const txid = await this.api.connection.sendRawTransaction(signed.serialize(), {skipPreflight: true});
-                            console.log(`ix ${ixIndex} signature: ${txid}`);
-                            await this.api.connection.confirmTransaction(txid, "confirmed");
-                            await this.api.squads.getTransaction(tx.publicKey);
-                        } catch (_e) {
-                            console.log("Error executing instruction, trying it again");
-                            await this.api.squads.getTransaction(tx.publicKey);
-                            const ix = await this.api.executeInstructionBuilder(tx.publicKey, ixPDA);
-                            const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
-                            const executeIxTx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.wallet.publicKey});
-                            executeIxTx.add(additionalComputeBudgetInstruction, ix);
-                            const signed = await this.wallet.signTransaction(executeIxTx);
-                            const txid = await this.api.connection.sendRawTransaction(signed.serialize(), {skipPreflight: true});
-                            console.log(`ix ${ixIndex} retry signature: ${txid}`);
-                            await this.api.connection.confirmTransaction(txid, "confirmed");
-                        }
-                        await this.api.squads.getTransaction(tx.publicKey);
-                        successfullyExecuted++;
-                    }
-                } else {
-                    const ix = await this.api.executeTransactionBuilder(tx.publicKey);
+                // Decide how to execute by the transaction's real serialized
+                // size, not the raw instruction count. The fully-atomic
+                // executeTransaction is preferred whenever it fits (it dedups the
+                // account footprint across every instruction and is all-or-
+                // nothing), and is only possible from a clean start
+                // (executedIndex 0). When the whole thing can't fit one tx, we
+                // fall back to executeInstruction, greedily packing as many as
+                // fit per tx — far fewer transactions (and fewer partial-commit
+                // windows) than one instruction per tx.
+                let atomicTx: Transaction | null = null;
+                if (tx.executedIndex === 0) {
+                    const executeIx = await this.api.executeTransactionBuilder(tx.publicKey);
                     const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
-                    const executeTx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.wallet.publicKey});
-                    executeTx.add(additionalComputeBudgetInstruction, ix);
-                    const signed = await this.wallet.signTransaction(executeTx);
+                    const candidate = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.wallet.publicKey});
+                    candidate.add(additionalComputeBudgetInstruction, executeIx);
+                    const size = this.serializedTxSize(candidate);
+                    if (size !== null && size <= EXECUTE_TX_BYTE_BUDGET) atomicTx = candidate;
+                }
+
+                if (atomicTx) {
+                    const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
+                    atomicTx.recentBlockhash = blockhash;
+                    atomicTx.lastValidBlockHeight = lastValidBlockHeight;
+                    const signed = await this.wallet.signTransaction(atomicTx);
                     const txid = await this.api.connection.sendRawTransaction(signed.serialize());
-                    await this.api.connection.confirmTransaction(txid, "processed");
+                    const {value} = await this.api.connection.confirmTransaction({signature: txid, blockhash, lastValidBlockHeight}, "confirmed");
+                    if (value.err) throw new Error(`Execution failed on chain: ${JSON.stringify(value.err)}`);
+                    successfullyExecuted = tx.instructionIndex - tx.executedIndex;
+                } else {
+                    // Packed sequential fallback. Execution still spans multiple
+                    // Solana txs, so an earlier batch can commit on-chain even if
+                    // a later one fails. Require explicit operator opt-in.
+                    status.stop();
+                    const remaining = tx.instructionIndex - tx.executedIndex;
+                    console.log(chalk.yellow(
+                        `\nThis transaction is too large to execute atomically. Instructions ${tx.executedIndex + 1}-${tx.instructionIndex} (${remaining} total) will run across multiple transactions.`,
+                    ));
+                    console.log(chalk.yellow(
+                        "Earlier instructions may commit on-chain even if a later one fails, leaving the transaction partially executed.",
+                    ));
+                    const {yes} = await basicConfirm("Proceed with non-atomic execution?", false);
+                    if (!yes) {
+                        const updatedTx = await this.api.squads.getTransaction(tx.publicKey);
+                        return () => this.transaction(updatedTx, ms, txs);
+                    }
+                    status.start();
+                    await this.executeInstructionsBatched(
+                        tx.publicKey,
+                        tx.executedIndex + 1,
+                        tx.instructionIndex,
+                        additionalComputeBudgetInstruction,
+                        (count) => { successfullyExecuted += count; },
+                    );
                 }
                 status.stop();
                 const updatedTx = await this.api.squads.getTransaction(tx.publicKey);
