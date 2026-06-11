@@ -499,6 +499,11 @@ class Menu{
         const {yes} = await basicConfirm(`Create transaction to add ${memberKey}?`, false);
         if (!yes) return () => this.addKey(ms);
         const newKey = new PublicKey(memberKey);
+        if (ms.keys.some((k) => k.equals(newKey))) {
+            console.log(chalk.red(`${newKey.toBase58()} is already a member of this multisig — this would be a no-op that can invalidate other active proposals.`));
+            await continueInq();
+            return () => this.settings(ms);
+        }
         const status = new Spinner("Creating New Member Transaction...");
         status.start();
         try {
@@ -557,6 +562,11 @@ class Menu{
         });
         if (threshold === "") return () => this.settings(ms);
         const thresholdInt = Number(threshold);
+        if (thresholdInt === ms.threshold) {
+            console.log(chalk.red(`The threshold is already ${ms.threshold} — this would be a no-op that can invalidate other active proposals.`));
+            await continueInq();
+            return () => this.settings(ms);
+        }
         const {yes} = await basicConfirm(`Create transaction to change threshold to ${thresholdInt}?`, false);
         if (!yes) return () => this.settings(ms);
         const status = new Spinner("Creating Change Threshold Transaction...");
