@@ -549,19 +549,20 @@ class Menu{
             type: 'input',
             message: `Enter the new proposed threshold`,
             validate: (t) => {
-                if (parseInt(t, 10) > ms.keys.length) {
-                    return "Threshold cannot be greater than the number of members";
-                }
+                const n = Number(t);
+                if (!Number.isInteger(n) || n < 1) return "Threshold must be a whole number of at least 1";
+                if (n > ms.keys.length) return "Threshold cannot be greater than the number of members";
                 return true;
             },
         });
         if (threshold === "") return () => this.settings(ms);
-        const {yes} = await basicConfirm(`Create transaction to change threshold to ${threshold}?`, false);
+        const thresholdInt = Number(threshold);
+        const {yes} = await basicConfirm(`Create transaction to change threshold to ${thresholdInt}?`, false);
         if (!yes) return () => this.settings(ms);
         const status = new Spinner("Creating Change Threshold Transaction...");
         status.start();
         try {
-            await this.api.changeThresholdTransaction(ms.publicKey, threshold);
+            await this.api.changeThresholdTransaction(ms.publicKey, thresholdInt);
             status.stop();
             const newMs = await this.api.squads.getMultisig(ms.publicKey);
             await continueInq();
