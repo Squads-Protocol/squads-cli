@@ -509,8 +509,20 @@ class Menu{
             try {
                 await this.sendAndConfirmExecuteTx([computeBudgetIx, ...batch]);
             } catch (_e) {
-                console.log("Error executing instruction batch, trying it again");
-                await this.sendAndConfirmExecuteTx([computeBudgetIx, ...batch]);
+                // The send/confirm failed — but a confirmation timeout can fire
+                // AFTER the batch actually landed (each batch is one atomic Solana
+                // tx, committing all-or-nothing). Re-read on-chain progress before
+                // retrying: if executedIndex already advanced past this batch it
+                // landed, so we must NOT resend the now-stale instructions — they
+                // would fail the program's instruction_index == executed_index + 1
+                // guard and the loop would wrongly report zero progress.
+                const refreshed = await this.api.squads.getTransaction(txPDA, "confirmed");
+                if (refreshed.executedIndex >= lastIdx) {
+                    console.log("Batch already landed despite the confirmation error; continuing.");
+                } else {
+                    console.log("Batch did not land; retrying.");
+                    await this.sendAndConfirmExecuteTx([computeBudgetIx, ...batch]);
+                }
             }
             onBatchConfirmed(batch.length);
             cursor += batch.length;

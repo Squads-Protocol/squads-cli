@@ -83,9 +83,13 @@ export const getAssets = async (connection: Connection, userKey: PublicKey): Pro
                 return;
             }
 
-            // NFT heuristic: has an Edition account OR decimals === 0.
-            const isNFT = editionAccounts[i] !== null || decimals === 0;
-            if (isNFT) return;
+            // An Edition account is canonical proof of a non-fungible mint
+            // (master editions for 1/1s, edition prints, and pNFTs all have one).
+            // Decimals are NOT used as an NFT signal — ordinary zero-decimal
+            // fungible/semi-fungible mints have no edition account and must stay
+            // visible. Mints positively identified as non-fungible by token
+            // standard are dropped below, after metadata decode.
+            if (editionAccounts[i] !== null) return;
 
             // Prefer on-chain metadata for symbol/name when available.
             const metaEntry = metadataAccounts[i];
