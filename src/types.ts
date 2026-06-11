@@ -24,6 +24,10 @@ export interface TokenAsset {
     symbol: string;
     decimals: number;
     name: string;
+    // Where the symbol/name label came from. `metadata` is attacker-controllable
+    // (on-chain Metaplex metadata of any mint), so the label is unverified; the
+    // mint address remains the authoritative identifier.
+    provenance: 'metadata' | 'registry' | 'unknown';
 }
 
 export interface AssetBundle {
@@ -34,6 +38,7 @@ export interface AssetBundle {
         Mint: string;
         Symbol: string;
         Name: string;
+        Source: string;
     }>;
 }
 

@@ -17,6 +17,7 @@ import continueInq from "./continue.js";
 import addInstructionInq from "./addInstruction.js";
 import withdrawInq from "./withdraw.js";
 import createATAInq from "./createATA.js";
+import authorityIndexInq from "./authorityIndex.js";
 import {
     nftMainInq,
     nftUpdateAuthorityInq,
@@ -49,6 +50,7 @@ export {
     createATAInq,
     addTransactionInq,
     addInstructionInq,
+    authorityIndexInq,
     promptProgramId,
     transactionPrompt,
     basicConfirm,
