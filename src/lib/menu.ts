@@ -258,8 +258,43 @@ class Menu{
                 const populatedTx = anchor.web3.Transaction.populate(rawTxMessage);
                 const ixes = populatedTx.instructions;
                 console.log("This will create a new multisig transaction for authority/signer " + chalk.blue(authorityPDA.toBase58()));
-                const {yes} = await basicConfirm(`Create a transaction with ${ixes.length} instructions?`, false);
-                if (!yes) return () => this.multisig(ms);
+
+                // Render every imported instruction (program, accounts, data) so the
+                // operator performs a full semantic review before anything is signed.
+                // An imported blob can carry control-changing instructions (upgrade
+                // authority, validator withdraw authority, etc.); showing only the
+                // instruction count would let those be approved blindly.
+                console.log(chalk.yellow(`\nReview all ${ixes.length} imported instruction(s) before continuing:\n`));
+                ixes.forEach((ix, index) => {
+                    console.log(chalk.bold(`Instruction ${index + 1}/${ixes.length}`));
+                    console.log("ProgramId: " + chalk.blue(ix.programId.toBase58()));
+                    console.log("Data: ", ix.data);
+                    console.table(ix.keys.map(a => ({
+                        "Account": a.pubkey.toBase58(),
+                        "Is signer": a.isSigner,
+                        "Is writable": a.isWritable,
+                    })));
+                });
+
+                // Split the previously-automatic create→activate→approve flow into an
+                // explicit choice. Approving casts an on-chain vote that can make the
+                // transaction immediately executable, so it must be opt-in and clearly
+                // labelled rather than bundled silently into "create".
+                const {importAction} = await inquirer.prompt({
+                    default: "",
+                    name: 'importAction',
+                    type: 'list',
+                    choices: [
+                        "Create draft only (review/approve later)",
+                        "Create, activate, and approve now (casts your on-chain approval)",
+                        "<- Cancel",
+                    ],
+                    message: 'These instructions can change control over vault assets. How do you want to proceed?',
+                });
+                const draftOnly = importAction.indexOf("Create draft") === 0;
+                const approveNow = importAction.indexOf("Create, activate") === 0;
+                if (!draftOnly && !approveNow) return () => this.multisig(ms);
+
                 status.start();
                 const tx = await this.api.createTransaction(ms.publicKey, parseInt(authority, 10));
                 status.stop();
@@ -270,9 +305,13 @@ class Menu{
                     await this.api.addInstruction(tx.publicKey, ixes[i]);
                     status2.stop();
                 }
-                await this.api.activate(tx.publicKey);
-                await this.api.approveTransaction(tx.publicKey);
-                console.log("Transaction created!");
+                if (approveNow) {
+                    await this.api.activate(tx.publicKey);
+                    await this.api.approveTransaction(tx.publicKey);
+                    console.log("Transaction created, activated, and approved!");
+                } else {
+                    console.log("Draft transaction created. Activate and approve it from the transactions menu after review.");
+                }
                 await continueInq();
                 const txs = await this.api.getTransactions(ms);
                 return () => this.transactions(txs, ms);
