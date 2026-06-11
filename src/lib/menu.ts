@@ -265,14 +265,14 @@ class Menu{
 
         if (assemble.indexOf("Assemble") == 0) {
             const {authority} = await createTransactionInq();
-            const authorityPDA = await this.api.getAuthority(ms.publicKey, parseInt(authority, 10));
+            const authorityPDA = await this.api.getAuthority(ms.publicKey, authority);
 
             const status = new Spinner("Creating transaction...");
             console.log("This will create a new transaction draft for authority " + chalk.blue(authorityPDA.toBase58()));
             const {yes} = await basicConfirm("Continue?", false);
             if (!yes) return () => this.multisig(ms);
             status.start();
-            const tx = await this.api.createTransaction(ms.publicKey, parseInt(authority, 10));
+            const tx = await this.api.createTransaction(ms.publicKey, authority);
             status.stop();
             console.log("Transaction created!");
             console.log("Transaction key: " + chalk.blue(tx.publicKey.toBase58()));
@@ -282,7 +282,7 @@ class Menu{
         }
         if (assemble.indexOf("Enter") == 0) {
             const {authority} = await createTransactionInq();
-            const authorityPDA = await this.api.getAuthority(ms.publicKey, parseInt(authority, 10));
+            const authorityPDA = await this.api.getAuthority(ms.publicKey, authority);
 
             const {rawIx} = await addTransactionInq();
             if (rawIx.length <= 1) return () => this.multisig(ms);
@@ -334,7 +334,7 @@ class Menu{
                 if (!draftOnly && !approveNow) return () => this.multisig(ms);
 
                 status.start();
-                const tx = await this.api.createTransaction(ms.publicKey, parseInt(authority, 10));
+                const tx = await this.api.createTransaction(ms.publicKey, authority);
                 status.stop();
                 console.log(`Transaction ${tx.publicKey.toBase58()} created!`);
                 for (let i = 0; i < ixes.length; i++) {
