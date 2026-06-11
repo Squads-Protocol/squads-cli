@@ -1,3 +1,4 @@
+import type { Wallet as SdkNodeWallet } from "@coral-xyz/anchor";
 import Squads, { getTxPDA, getIxPDA, getAuthorityPDA } from "@sqds/sdk";
 import * as anchor from "@coral-xyz/anchor";
 import BN from "bn.js";
@@ -37,7 +38,13 @@ class API{
     constructor(wallet: AnchorWallet, connection: CliConnection, programId: PublicKey, programManagerId: PublicKey){
         this.programId = programId;
         this.programManagerId = programManagerId;
-        this.squads = Squads.endpoint(connection.cluster, wallet, {commitmentOrConfig: "confirmed", multisigProgramId: this.programId, programManagerProgramId: this.programManagerId});
+        // @sqds/sdk types this parameter as anchor's NodeWallet *class* (which
+        // requires a `payer` Keypair), but at runtime it only hands the wallet
+        // to AnchorProvider, which uses the Wallet *interface* members
+        // (publicKey/signTransaction/signAllTransactions). Ledger wallets
+        // implement the interface but have no `payer`, so we assert to the
+        // SDK's expected type. No runtime behavior change.
+        this.squads = Squads.endpoint(connection.cluster, wallet as SdkNodeWallet, {commitmentOrConfig: "confirmed", multisigProgramId: this.programId, programManagerProgramId: this.programManagerId});
         this.wallet = wallet;
         this.cluster = connection.cluster;
         this.connection = connection.connection;
