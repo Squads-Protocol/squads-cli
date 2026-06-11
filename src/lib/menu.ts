@@ -6,6 +6,7 @@ import * as anchor from "@coral-xyz/anchor";
 import CLI from "clui";
 import "console.table";
 import * as fs from 'fs';
+import os from 'os';
 import path from 'path';
 
 import { DEFAULT_MULTISIG_PROGRAM_ID, DEFAULT_PROGRAM_MANAGER_PROGRAM_ID, getIxPDA } from '@sqds/sdk';
@@ -24,6 +25,7 @@ import {
     createTransactionInq,
     addInstructionInq,
     addTransactionInq,
+    authorityIndexInq,
     promptProgramId,
     transactionPrompt,
     basicConfirm,
@@ -154,11 +156,14 @@ class Menu{
             spinner.stop();
             const testList = await loadAuthorities(this.multisigs);
 
+            const byAddressIndex = testList.length;
+            testList.push({ name: "Open a multisig by address", value: byAddressIndex, short: "By address" });
             const dIndex = testList.length;
             testList.push({ name: "<- Go back", value: dIndex, short: "Go back" });
 
             const {action} = await viewMultisigsMenu(testList, dIndex);
             if (action === dIndex) return () => this.top();
+            if (action === byAddressIndex) return () => this.openMultisigByAddress();
             return () => this.multisig(this.multisigs[action]);
         } catch (error) {
             spinner.stop();
@@ -166,6 +171,41 @@ class Menu{
             console.log("Try restarting the cli using a different Solana cluster");
             await continueInq();
             return () => this.top();
+        }
+    };
+
+    // Direct-address fallback for the discovery list. Membership discovery scans
+    // member slots and, while it now grows well past the old 10-slot cap, cannot
+    // prove completeness for arbitrarily large multisigs. This lets an operator
+    // open any multisig by its account address regardless of where their wallet
+    // sits in the members list.
+    openMultisigByAddress = async (): Promise<NextAction> => {
+        const {address} = await inquirer.prompt({
+            default: "",
+            name: 'address',
+            type: 'input',
+            message: 'Enter the multisig account address (base58):',
+        });
+        if (!address || address.trim().length < 1) return () => this.multisigList();
+        let msPubkey: PublicKey;
+        try {
+            msPubkey = new PublicKey(address.trim());
+        } catch (e) {
+            console.log(chalk.red("Invalid public key."));
+            await continueInq();
+            return () => this.multisigList();
+        }
+        const status = new Spinner("Loading multisig...");
+        status.start();
+        try {
+            const ms = await this.api.getSquadExtended(msPubkey);
+            status.stop();
+            return () => this.multisig(ms);
+        } catch (e) {
+            status.stop();
+            console.log(chalk.red("Could not load a multisig at that address. Check the address and cluster."));
+            await continueInq();
+            return () => this.multisigList();
         }
     };
 
@@ -179,12 +219,13 @@ class Menu{
         console.log(" ");
         const {action} = await multisigMainMenu(ms);
         if (action === MULTISIG.VAULT) {
+            const {authorityIndex} = await authorityIndexInq();
             const status = new Spinner("Loading vault");
             status.start();
-            const vaultPDA = await this.api.getVault(ms.publicKey);
+            const vaultPDA = await this.api.getAuthority(ms.publicKey, authorityIndex);
             const vaultAssets = await this.api.getVaultAssets(vaultPDA);
             status.stop();
-            return () => this.vault(ms, vaultPDA, vaultAssets);
+            return () => this.vault(ms, vaultPDA, vaultAssets, authorityIndex);
         }
         else if (action === MULTISIG.SETTINGS) {
             return () => this.settings(ms);
@@ -227,24 +268,28 @@ class Menu{
 
         if (assemble.indexOf("Assemble") == 0) {
             const {authority} = await createTransactionInq();
-            const authorityPDA = await this.api.getAuthority(ms.publicKey, parseInt(authority, 10));
+            const authorityPDA = await this.api.getAuthority(ms.publicKey, authority);
 
             const status = new Spinner("Creating transaction...");
             console.log("This will create a new transaction draft for authority " + chalk.blue(authorityPDA.toBase58()));
             const {yes} = await basicConfirm("Continue?", false);
             if (!yes) return () => this.multisig(ms);
             status.start();
-            const tx = await this.api.createTransaction(ms.publicKey, parseInt(authority, 10));
+            const tx = await this.api.createTransaction(ms.publicKey, authority);
             status.stop();
             console.log("Transaction created!");
             console.log("Transaction key: " + chalk.blue(tx.publicKey.toBase58()));
             await continueInq();
-            const txs = await this.api.getTransactions(ms);
-            return () => this.transactions(txs, ms);
+            // Re-fetch the multisig: createTransaction bumped transactionIndex on-chain,
+            // and getTransactions derives the list from that index. Using the pre-create
+            // snapshot would omit the proposal just created.
+            const freshMs = await this.api.getSquadExtended(ms.publicKey);
+            const txs = await this.api.getTransactions(freshMs);
+            return () => this.transactions(txs, freshMs);
         }
         if (assemble.indexOf("Enter") == 0) {
             const {authority} = await createTransactionInq();
-            const authorityPDA = await this.api.getAuthority(ms.publicKey, parseInt(authority, 10));
+            const authorityPDA = await this.api.getAuthority(ms.publicKey, authority);
 
             const {rawIx} = await addTransactionInq();
             if (rawIx.length <= 1) return () => this.multisig(ms);
@@ -254,14 +299,52 @@ class Menu{
                 const txBuffer = anchor.utils.bytes.bs58.decode(rawIx);
                 clear();
                 this.header();
-                const rawTxMessage = anchor.web3.Message.from(txBuffer);
-                const populatedTx = anchor.web3.Transaction.populate(rawTxMessage);
+                // The pasted blob is a serialized wire transaction, which is prefixed
+                // with a signature array. Transaction.from strips the signatures before
+                // parsing the message; Message.from would reinterpret signature bytes as
+                // message header/instruction data, yielding different instructions.
+                const populatedTx = anchor.web3.Transaction.from(txBuffer);
                 const ixes = populatedTx.instructions;
                 console.log("This will create a new multisig transaction for authority/signer " + chalk.blue(authorityPDA.toBase58()));
-                const {yes} = await basicConfirm(`Create a transaction with ${ixes.length} instructions?`, false);
-                if (!yes) return () => this.multisig(ms);
+
+                // Render every imported instruction (program, accounts, data) so the
+                // operator performs a full semantic review before anything is signed.
+                // An imported blob can carry control-changing instructions (upgrade
+                // authority, validator withdraw authority, etc.); showing only the
+                // instruction count would let those be approved blindly.
+                console.log(chalk.yellow(`\nReview all ${ixes.length} imported instruction(s) before continuing:\n`));
+                ixes.forEach((ix, index) => {
+                    console.log(chalk.bold(`Instruction ${index + 1}/${ixes.length}`));
+                    console.log("ProgramId: " + chalk.blue(ix.programId.toBase58()));
+                    console.log("Data: ", ix.data);
+                    console.table(ix.keys.map(a => ({
+                        "Account": a.pubkey.toBase58(),
+                        "Is signer": a.isSigner,
+                        "Is writable": a.isWritable,
+                    })));
+                });
+
+                // Split the previously-automatic create→activate→approve flow into an
+                // explicit choice. Approving casts an on-chain vote that can make the
+                // transaction immediately executable, so it must be opt-in and clearly
+                // labelled rather than bundled silently into "create".
+                const {importAction} = await inquirer.prompt({
+                    default: "",
+                    name: 'importAction',
+                    type: 'list',
+                    choices: [
+                        "Create draft only (review/approve later)",
+                        "Create, activate, and approve now (casts your on-chain approval)",
+                        "<- Cancel",
+                    ],
+                    message: 'These instructions can change control over vault assets. How do you want to proceed?',
+                });
+                const draftOnly = importAction.indexOf("Create draft") === 0;
+                const approveNow = importAction.indexOf("Create, activate") === 0;
+                if (!draftOnly && !approveNow) return () => this.multisig(ms);
+
                 status.start();
-                const tx = await this.api.createTransaction(ms.publicKey, parseInt(authority, 10));
+                const tx = await this.api.createTransaction(ms.publicKey, authority);
                 status.stop();
                 console.log(`Transaction ${tx.publicKey.toBase58()} created!`);
                 for (let i = 0; i < ixes.length; i++) {
@@ -270,12 +353,23 @@ class Menu{
                     await this.api.addInstruction(tx.publicKey, ixes[i]);
                     status2.stop();
                 }
-                await this.api.activate(tx.publicKey);
-                await this.api.approveTransaction(tx.publicKey);
-                console.log("Transaction created!");
+                if (approveNow) {
+                    await this.api.activate(tx.publicKey);
+                    await this.api.approveTransaction(tx.publicKey);
+                    console.log("Transaction created, activated, and approved!");
+                } else {
+                    console.log("Draft transaction created. Activate and approve it from the transactions menu after review.");
+                }
                 await continueInq();
-                const txs = await this.api.getTransactions(ms);
-                return () => this.transactions(txs, ms);
+                // Re-fetch the multisig so the just-created proposal (which bumped
+                // transactionIndex on-chain) is included in the list, then route the
+                // operator straight into its detail screen so they can immediately
+                // review or cancel the live, already-activated-and-approved proposal.
+                const freshMs = await this.api.getSquadExtended(ms.publicKey);
+                const txs = await this.api.getTransactions(freshMs);
+                const createdTx = txs.find(t => t.publicKey.toBase58() === tx.publicKey.toBase58());
+                if (createdTx) return () => this.transaction(createdTx, freshMs, txs);
+                return () => this.transactions(txs, freshMs);
             } catch (e) {
                 console.log("Error", e);
                 status.stop();
@@ -319,16 +413,23 @@ class Menu{
         const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         const authority = await this.api.getAuthority(ms.publicKey, tx.authorityIndex);
+        const creatorIsSelf = tx.creator.toBase58() === this.wallet.publicKey.toBase58();
         const txData = [
             {
                 status: Object.keys(tx.status)[0],
+                creator: tx.creator.toBase58() + (creatorIsSelf ? " (you)" : ""),
                 authority: authority.toBase58(),
                 approved: tx.approved.length,
                 rejected: tx.rejected.length,
-                instructions: tx.instructionIndex
+                instructions: tx.instructionIndex,
+                executed: tx.executedIndex,
+                remaining: tx.instructionIndex - tx.executedIndex,
             }
         ];
         console.table(txData);
+        if (tx.executedIndex > 0 && tx.executedIndex < tx.instructionIndex) {
+            console.log(chalk.yellow(`Partially executed: ${tx.executedIndex}/${tx.instructionIndex} instructions done — Execute will resume from instruction ${tx.executedIndex + 1}.`));
+        }
         if(tx.status.active){
             console.log(chalk.red("Be sure to review all transaction instructions before approving or executing!"));
         }
@@ -380,7 +481,14 @@ class Menu{
                 units: EXECUTE_IX_COMPUTE_UNIT_LIMIT,
             });
             try {
-                if (tx.instructionIndex > 3) {
+                // Drive the execute mode from transaction state, not just the raw
+                // instruction count. Once sequential execution has started
+                // (executedIndex > 0) the program rejects executeTransaction with
+                // PartialExecution (constraint: transaction.executed_index < 1), so
+                // a partially executed transaction of ANY size must continue via
+                // executeInstruction for the next PDA. The loop already resumes
+                // from executedIndex + 1.
+                if (tx.instructionIndex > 3 || tx.executedIndex > 0) {
                     for (let ixIndex = tx.executedIndex + 1; ixIndex <= tx.instructionIndex; ixIndex++) {
                         const [ixPDA] = getIxPDA(tx.publicKey, new anchor.BN(ixIndex), this.api.programId);
                         console.log("invoking instruction ", ixIndex);
@@ -392,19 +500,25 @@ class Menu{
                             const signed = await this.wallet.signTransaction(executeIxTx);
                             const txid = await this.api.connection.sendRawTransaction(signed.serialize(), {skipPreflight: true});
                             console.log(`ix ${ixIndex} signature: ${txid}`);
-                            await this.api.connection.confirmTransaction(txid, "confirmed");
+                            await this.api.connection.confirmTransaction({signature: txid, blockhash, lastValidBlockHeight}, "confirmed");
                             await this.api.squads.getTransaction(tx.publicKey);
                         } catch (_e) {
-                            console.log("Error executing instruction, trying it again");
-                            await this.api.squads.getTransaction(tx.publicKey);
-                            const ix = await this.api.executeInstructionBuilder(tx.publicKey, ixPDA);
-                            const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
-                            const executeIxTx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.wallet.publicKey});
-                            executeIxTx.add(additionalComputeBudgetInstruction, ix);
-                            const signed = await this.wallet.signTransaction(executeIxTx);
-                            const txid = await this.api.connection.sendRawTransaction(signed.serialize(), {skipPreflight: true});
-                            console.log(`ix ${ixIndex} retry signature: ${txid}`);
-                            await this.api.connection.confirmTransaction(txid, "confirmed");
+                            // The confirmation may have failed (e.g. timeout) even though the
+                            // instruction landed on-chain, so check fresh state before retrying.
+                            const refreshed = await this.api.squads.getTransaction(tx.publicKey);
+                            if (refreshed.executedIndex >= ixIndex) {
+                                console.log(`ix ${ixIndex} landed on-chain despite the confirmation error, continuing`);
+                            } else {
+                                console.log("Error executing instruction, trying it again");
+                                const ix = await this.api.executeInstructionBuilder(tx.publicKey, ixPDA);
+                                const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
+                                const executeIxTx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.wallet.publicKey});
+                                executeIxTx.add(additionalComputeBudgetInstruction, ix);
+                                const signed = await this.wallet.signTransaction(executeIxTx);
+                                const txid = await this.api.connection.sendRawTransaction(signed.serialize(), {skipPreflight: true});
+                                console.log(`ix ${ixIndex} retry signature: ${txid}`);
+                                await this.api.connection.confirmTransaction({signature: txid, blockhash, lastValidBlockHeight}, "confirmed");
+                            }
                         }
                         await this.api.squads.getTransaction(tx.publicKey);
                         successfullyExecuted++;
@@ -416,14 +530,21 @@ class Menu{
                     executeTx.add(additionalComputeBudgetInstruction, ix);
                     const signed = await this.wallet.signTransaction(executeTx);
                     const txid = await this.api.connection.sendRawTransaction(signed.serialize());
-                    await this.api.connection.confirmTransaction(txid, "processed");
+                    // Wait for "confirmed" (not "processed") before reporting success:
+                    // single-instruction control changes (membership/threshold/authority
+                    // transfers) take this fast path, and processed state can disappear
+                    // on fork churn, making a governance change look durably complete
+                    // when it is not.
+                    await this.api.connection.confirmTransaction(txid, "confirmed");
                 }
                 status.stop();
-                const updatedTx = await this.api.squads.getTransaction(tx.publicKey);
+                // Re-read at "confirmed" so the success message and refreshed state
+                // reflect durable finality rather than the SDK's "processed" default.
+                const updatedTx = await this.api.squads.getTransaction(tx.publicKey, "confirmed");
                 const newInd = txs.findIndex(t => t.publicKey.toBase58() === tx.publicKey.toBase58());
                 txs.splice(newInd, 1, updatedTx);
                 console.log("Transaction executed");
-                const updatedMs = await this.api.squads.getMultisig(ms.publicKey);
+                const updatedMs = await this.api.squads.getMultisig(ms.publicKey, "confirmed");
                 await continueInq();
                 return () => this.transaction(updatedTx, updatedMs, txs);
             } catch (e) {
@@ -431,6 +552,7 @@ class Menu{
                 console.log(`Executed ${successfullyExecuted} instructions`);
                 console.log(`Terminated remaining execution because of an error: ${JSON.stringify(e)}`);
                 const updatedTx = await this.api.squads.getTransaction(tx.publicKey);
+                console.log(`On-chain executedIndex: ${updatedTx.executedIndex} of ${updatedTx.instructionIndex} instructions`);
                 await continueInq();
                 return () => this.transaction(updatedTx, ms, txs);
             }
@@ -468,9 +590,10 @@ class Menu{
         return () => this.transaction(tx, ms, txs);
     };
 
-    vault = async (ms: MultisigAccount, vaultPDA: PublicKey, vd: AssetBundle): Promise<NextAction> => {
+    vault = async (ms: MultisigAccount, vaultPDA: PublicKey, vd: AssetBundle, authorityIndex: number = 1): Promise<NextAction> => {
         this.header();
-        console.log("Vault Address: " + chalk.blue(vaultPDA.toBase58()));
+        const indexLabel = authorityIndex === 1 ? `${authorityIndex} (default)` : `${authorityIndex}`;
+        console.log(`Vault Address (authority index ${indexLabel}): ` + chalk.blue(vaultPDA.toBase58()));
         console.table(vd.displayTokens);
         await continueInq();
         return () => this.multisig(ms);
@@ -496,15 +619,20 @@ class Menu{
     addKey = async (ms: MultisigAccount): Promise<NextAction> => {
         const {memberKey} = await inquirer.prompt({default: "", name: 'memberKey', type: 'input', message: `Enter the public key of the member you want to add (base58):`});
         if (memberKey === "") return () => this.settings(ms);
-        const {yes} = await basicConfirm(`Create transaction to add ${memberKey}?`, false);
+        const {yes} = await basicConfirm(`Create, activate, and cast your approval on a transaction to add ${memberKey}?`, false);
         if (!yes) return () => this.addKey(ms);
         const newKey = new PublicKey(memberKey);
+        if (ms.keys.some((k) => k.equals(newKey))) {
+            console.log(chalk.red(`${newKey.toBase58()} is already a member of this multisig — this would be a no-op that can invalidate other active proposals.`));
+            await continueInq();
+            return () => this.settings(ms);
+        }
         const status = new Spinner("Creating New Member Transaction...");
         status.start();
         try {
             await this.api.addKeyTransaction(ms.publicKey, newKey);
             status.stop();
-            console.log("Transaction created!");
+            console.log("Transaction created and activated — your approval vote has been cast.");
             await continueInq();
             const newMs = await this.api.squads.getMultisig(ms.publicKey);
             return () => this.multisig(newMs);
@@ -522,7 +650,7 @@ class Menu{
         choices.push("<- Go back");
         const {memberKey} = await inquirer.prompt({choices, name: 'memberKey', type: 'list', message: `Which key do you want to remove?`});
         if (memberKey === "<- Go back") return () => this.settings(ms);
-        const {yes} = await basicConfirm(`Create transaction to remove ${memberKey}?`, false);
+        const {yes} = await basicConfirm(`Create, activate, and cast your approval on a transaction to remove ${memberKey}?`, false);
         if (!yes) return () => this.removeKey(ms);
         const status = new Spinner("Creating Remove Member Transaction...");
         status.start();
@@ -530,6 +658,7 @@ class Menu{
             const exKey = new PublicKey(memberKey);
             await this.api.removeKeyTransaction(ms.publicKey, exKey);
             status.stop();
+            console.log("Transaction created and activated — your approval vote has been cast.");
             const newMs = await this.api.squads.getMultisig(ms.publicKey);
             await continueInq();
             return () => this.multisig(newMs);
@@ -549,20 +678,27 @@ class Menu{
             type: 'input',
             message: `Enter the new proposed threshold`,
             validate: (t) => {
-                if (parseInt(t, 10) > ms.keys.length) {
-                    return "Threshold cannot be greater than the number of members";
-                }
+                const n = Number(t);
+                if (!Number.isInteger(n) || n < 1) return "Threshold must be a whole number of at least 1";
+                if (n > ms.keys.length) return "Threshold cannot be greater than the number of members";
                 return true;
             },
         });
         if (threshold === "") return () => this.settings(ms);
-        const {yes} = await basicConfirm(`Create transaction to change threshold to ${threshold}?`, false);
+        const thresholdInt = Number(threshold);
+        if (thresholdInt === ms.threshold) {
+            console.log(chalk.red(`The threshold is already ${ms.threshold} — this would be a no-op that can invalidate other active proposals.`));
+            await continueInq();
+            return () => this.settings(ms);
+        }
+        const {yes} = await basicConfirm(`Create, activate, and cast your approval on a transaction to change threshold to ${threshold}?`, false);
         if (!yes) return () => this.settings(ms);
         const status = new Spinner("Creating Change Threshold Transaction...");
         status.start();
         try {
-            await this.api.changeThresholdTransaction(ms.publicKey, threshold);
+            await this.api.changeThresholdTransaction(ms.publicKey, thresholdInt);
             status.stop();
+            console.log("Transaction created and activated — your approval vote has been cast.");
             const newMs = await this.api.squads.getMultisig(ms.publicKey);
             await continueInq();
             return () => this.multisig(newMs);
@@ -633,6 +769,7 @@ class Menu{
         const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         console.log(`This will create a safe upgrade authority transfer transaction of ${programId} ${destination.direction} the Squad vault`);
+        console.log("The transaction will also be activated and your approval vote cast automatically.");
         console.log("Program Address: " + chalk.blue(`${programId}`));
         console.log(`Multisig Address: ` + chalk.white(`${ms.publicKey.toBase58()}`));
         console.log(`Current Program Authority: ` + chalk.white(`${currentAuthority}`));
@@ -644,7 +781,7 @@ class Menu{
         try {
             const tx = await this.api.createSafeAuthorityTx(ms.publicKey, new PublicKey(programId), new PublicKey(currentAuthority), destination.key);
             status.stop();
-            console.log(chalk.green("Transaction created!"));
+            console.log(chalk.green("Transaction created and activated — your approval vote has been cast."));
             console.log(chalk.blue("Transaction ID: ") + chalk.white(tx));
             await continueInq();
             return () => this.multisig(ms);
@@ -724,14 +861,20 @@ class Menu{
         return () => this.multisig(ms);
     };
 
-    nfts = async (ms: MultisigAccount): Promise<NextAction> => {
+    nfts = async (ms: MultisigAccount, authorityIndex?: number): Promise<NextAction> => {
         clear();
-        const vault = await this.api.getVault(ms.publicKey);
+        // Prompt for the authority index once on entry into the NFT flows, then
+        // thread the selected index/PDA through every sub-flow. When re-entered
+        // (e.g. returning from a sub-flow) the previously selected index is kept.
+        const index = authorityIndex ?? (await authorityIndexInq()).authorityIndex;
+        const vault = await this.api.getAuthority(ms.publicKey, index);
         this.header(vault);
+        const indexLabel = index === 1 ? `${index} (default)` : `${index}`;
+        console.log(`Using authority index ${indexLabel} - vault: ` + chalk.blue(vault.toBase58()));
         const {action} = await nftMainInq();
-        if (action === 0) return () => this.nftAuthorityChange(ms);
-        if (action === 1) return () => this.nftValidateMetaAuthorities(ms);
-        if (action === 2) return () => this.nftBatchTransfer(ms);
+        if (action === 0) return () => this.nftAuthorityChange(ms, vault, index);
+        if (action === 1) return () => this.nftValidateMetaAuthorities(ms, vault, index);
+        if (action === 2) return () => this.nftBatchTransfer(ms, vault, index);
         return () => this.multisig(ms);
     };
 
@@ -783,6 +926,7 @@ class Menu{
         const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         console.log(`This will create a transaction for the transfer of the validator (${validatorId}) withdraw authority out of the Squad vault`);
+        console.log("The transaction will also be activated and your approval vote cast automatically.");
         console.log("Validator Address: " + chalk.blue(`${validatorId}`));
         console.log(`Withdraw Authority: ` + chalk.white(`${withdrawAuthority}`));
         console.log(`New Withdraw Authority: ` + chalk.white(`${destination}`));
@@ -793,7 +937,7 @@ class Menu{
         try {
             const tx = await this.api.createTransferWithdrawAuthTx(ms.publicKey, new PublicKey(validatorId), new PublicKey(withdrawAuthority), new PublicKey(destination));
             status.stop();
-            console.log(chalk.green("Transaction created!"));
+            console.log(chalk.green("Transaction created and activated — your approval vote has been cast."));
             console.log(chalk.blue("Transaction ID: ") + chalk.white(tx));
             await continueInq();
             return () => this.multisig(ms);
@@ -806,9 +950,8 @@ class Menu{
         }
     };
 
-    nftAuthorityChange = async (ms: MultisigAccount): Promise<NextAction> => {
+    nftAuthorityChange = async (ms: MultisigAccount, vault: PublicKey, authorityIndex: number): Promise<NextAction> => {
         clear();
-        const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         const {type, publicKey, mintList} = await nftUpdateAuthorityInq();
         let newAuthority = vault;
@@ -831,18 +974,17 @@ class Menu{
 
         if (error) {
             await continueInq();
-            return () => this.nfts(ms);
+            return () => this.nfts(ms, authorityIndex);
         }
-        if (type === 0) return () => this.nftAuthorityChangeIncoming(ms, allMints, newAuthority);
-        if (type === 1) return () => this.nftAuthorityChangeOutgoing(ms, allMints, newAuthority);
+        if (type === 0) return () => this.nftAuthorityChangeIncoming(ms, allMints, newAuthority, vault, authorityIndex);
+        if (type === 1) return () => this.nftAuthorityChangeOutgoing(ms, allMints, newAuthority, vault, authorityIndex);
         await continueInq();
-        return () => this.nfts(ms);
+        return () => this.nfts(ms, authorityIndex);
     };
 
     // this can simply be transferred to the vault directly with metaplex program
-    nftAuthorityChangeIncoming = async (ms: MultisigAccount, mintList: PublicKey[], newAuthority: PublicKey): Promise<NextAction> => {
+    nftAuthorityChangeIncoming = async (ms: MultisigAccount, mintList: PublicKey[], newAuthority: PublicKey, vault: PublicKey, authorityIndex: number): Promise<NextAction> => {
         clear();
-        const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         const {validate} = await nftValidateMetasInq();
         let error = false;
@@ -877,8 +1019,8 @@ class Menu{
             console.log("Transfering metadata update authority to the vault, this may take some time depending on the number of mints and your internet connection speed.");
             const status = new Spinner("Updating authority of the metadata accounts...");
             status.start();
-            const successUpdates = [];
-            const failedUpdates = [];
+            const successUpdates: PublicKey[] = [];
+            const failedUpdates: PublicKey[] = [];
             for (const mint of mintList) {
                 try {
                     const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
@@ -888,9 +1030,9 @@ class Menu{
                     const signed = await this.api.wallet.signTransaction(updateTx);
                     const txid = await this.api.connection.sendRawTransaction(signed.serialize());
                     await this.api.connection.confirmTransaction(txid, "processed");
-                    successUpdates.push(mint.toBase58());
+                    successUpdates.push(mint);
                 }catch(e){
-                    failedUpdates.push(mint.toBase58());
+                    failedUpdates.push(mint);
                 }
             }
             status.stop();
@@ -899,7 +1041,7 @@ class Menu{
             if (failedUpdates.length > 0) {
                 const {showFail} = await nftUpdateShowFailedMintsInq();
                 if(showFail){
-                    console.log(JSON.stringify(failedUpdates));
+                    console.log(JSON.stringify(failedUpdates.map((mint) => mint.toBase58())));
                 }
                 const {rerun} = await nftUpdateTryFailuresInq(failedUpdates.length);
                 if (rerun) {
@@ -908,11 +1050,10 @@ class Menu{
                     const status = new Spinner(`Updating authority of the ${failedUpdates.length} remaining metadata accounts...`);
                     status.start();
                     for (const mint of failedUpdates) {
-                        const mAccount = new PublicKey(mint);
                         try {
                             const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
                             const updateTx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.api.wallet.publicKey});
-                            const updateIx = updateMetadataAuthorityIx(newAuthority, this.api.wallet.publicKey, mAccount);
+                            const updateIx = updateMetadataAuthorityIx(newAuthority, this.api.wallet.publicKey, getMetadataAccount(mint));
                             updateTx.add(updateIx);
                             const signed = await this.api.wallet.signTransaction(updateTx);
                             const txid = await this.api.connection.sendRawTransaction(signed.serialize());
@@ -929,13 +1070,12 @@ class Menu{
 
             await continueInq();
         }
-        return () => this.nfts(ms);
+        return () => this.nfts(ms, authorityIndex);
     };
 
     // to move the authority out, transaction will need to be created
-    nftAuthorityChangeOutgoing = async (ms: MultisigAccount, mintList: PublicKey[], newAuthority: PublicKey): Promise<NextAction> => {
+    nftAuthorityChangeOutgoing = async (ms: MultisigAccount, mintList: PublicKey[], newAuthority: PublicKey, vault: PublicKey, authorityIndex: number): Promise<NextAction> => {
         clear();
-        const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         let error = false;
         const {ownerValidate} = await nftValidateOwnerInq();
@@ -986,15 +1126,16 @@ class Menu{
             console.log("Creating the multisig transactions, this may take some time depending on the number of mints and your internet connection speed.");
             const status = new Spinner("Initializing metadata authority update multisig transactions...");
             status.start();
-            // setup log file
+            // setup log file in a fresh temp directory (avoid writing sensitive logs into cwd)
             const logtime = Date.now();
-            const logFilename = path.join(process.cwd(),`/authority-out-${logtime}.txt`);
+            const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'squads-authority-out-'));
+            const logFilename = path.join(logDir,`authority-out-${logtime}.txt`);
             const transferOutWriteStream = fs.createWriteStream(logFilename, "utf8");
             const fullResults = [];
             try {
                 transferOutWriteStream.write("Initiating bulk outgoing authority change transactions\n");
                 for(const batch of buckets){
-                    const metasAdded = await createAuthorityUpdateTx(this.api.squads, ms.publicKey, vault, newAuthority, batch, this.api.connection, transferOutWriteStream, safeSign);
+                    const metasAdded = await createAuthorityUpdateTx(this.api.squads, ms.publicKey, vault, newAuthority, batch, this.api.connection, transferOutWriteStream, safeSign, authorityIndex);
                     successfullyStagedMetas.push(...metasAdded.attached);
 
                     // if we haven't had an activation error, activate it
@@ -1018,20 +1159,20 @@ class Menu{
                 transferOutWriteStream.close();
             }
             // write the json log file
-            const logFilenameJson = path.join(process.cwd(),`/authority-out-mints-${logtime}.json`);
+            const logFilenameJson = path.join(logDir,`authority-out-mints-${logtime}.json`);
             // write the successful fullResults to the logFilenameJson
             fs.writeFileSync(logFilenameJson, JSON.stringify(fullResults, null, 2));
             status.stop();
             console.log(`Finished staging authority transfer txs for ${successfullyStagedMetas.length} metadata accounts`);
             console.log(`Output logs written to: ${logFilename}`);
+            console.log(`Mint results written to: ${logFilenameJson}`);
             await continueInq();
         }
-        return () => this.nfts(ms);
+        return () => this.nfts(ms, authorityIndex);
     };
 
-    nftValidateMetaAuthorities = async (ms: MultisigAccount): Promise<NextAction> => {
+    nftValidateMetaAuthorities = async (ms: MultisigAccount, vault: PublicKey, authorityIndex: number): Promise<NextAction> => {
         clear();
-        const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         let error = false;
         console.log("This process will check that all the provided mints specified have the proper matching metadata account update authority, and also possess valid metadata accounts.");
@@ -1072,12 +1213,11 @@ class Menu{
                 await continueInq();
             }
         }
-        return () => this.nfts(ms);
+        return () => this.nfts(ms, authorityIndex);
     };
 
-    nftBatchTransfer = async (ms: MultisigAccount): Promise<NextAction> => {
+    nftBatchTransfer = async (ms: MultisigAccount, vault: PublicKey, authorityIndex: number): Promise<NextAction> => {
         clear();
-        const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         const {mintList} = await nftMintListInq();
         if (mintList && mintList.length > 0) {
@@ -1128,7 +1268,7 @@ class Menu{
                 // setup log file
                 const fullResults = [];
                 for(const batch of buckets){
-                    const metasAdded = await createWithdrawNftTx(this.api.squads, ms.publicKey, vault, new PublicKey(destination), batch, this.api.connection);
+                    const metasAdded = await createWithdrawNftTx(this.api.squads, ms.publicKey, vault, new PublicKey(destination), batch, this.api.connection, authorityIndex);
                     successfullyStagedMetas.push(...metasAdded.attached);
 
                     // if we haven't had an activation error, activate it
@@ -1154,7 +1294,7 @@ class Menu{
         }
         // this goes back to main nft menu
         await continueInq();
-        return () => this.nfts(ms);
+        return () => this.nfts(ms, authorityIndex);
     };
 }
 
