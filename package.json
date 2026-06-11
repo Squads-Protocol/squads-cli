@@ -2,6 +2,7 @@
   "name": "@sqds/cli",
   "version": "2.3.19",
   "description": "CLI Tool for interacting with the Squads V3 Multisig Solana Program",
+
   "main": "bin/index.js",
   "files": [
     "bin/",
@@ -53,7 +54,7 @@
     "@types/clui": "0.3.1",
     "@types/figlet": "1.5.5",
     "@types/lodash": "4.14.191",
-    "axios": "1.15.2",
+    "axios": "1.16.0",
     "bn.js": "5.2.3",
     "bs58": "5.0.0",
     "chalk": "4.1.2",
@@ -83,8 +84,8 @@
     "@types/inquirer": "9.0.3",
     "@types/node": "18.14.6",
     "@types/yargs": "17.0.22",
-    "@typescript-eslint/eslint-plugin": "6.21.0",
-    "@typescript-eslint/parser": "6.21.0",
+    "@typescript-eslint/eslint-plugin": "7.6.0",
+    "@typescript-eslint/parser": "7.6.0",
     "eslint": "8.57.0",
     "ts-node": "10.9.1"
   },
