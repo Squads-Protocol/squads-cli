@@ -1,4 +1,5 @@
-import Squads, { getTxPDA, getAuthorityPDA } from "@sqds/sdk";
+import type { Wallet as SdkNodeWallet } from "@coral-xyz/anchor";
+import Squads, { getTxPDA, getIxPDA, getAuthorityPDA } from "@sqds/sdk";
 import * as anchor from "@coral-xyz/anchor";
 import BN from "bn.js";
 import chalk from "chalk";
@@ -10,7 +11,7 @@ import { ASSOCIATED_TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import {Connection, LAMPORTS_PER_SOL, PublicKey, VoteProgram} from "@solana/web3.js";
 import type CliConnection from "./connection.js";
-import type { AnchorWallet, MultisigAccount, SquadsTxBuilder, TransactionAccount } from "../types.js";
+import type { AnchorWallet, InstructionAccount, MultisigAccount, SquadsTxBuilder, TransactionAccount } from "../types.js";
 
 // Below this balance, warn the user that the fee-paying wallet may not have
 // enough SOL to cover the next tx's fees + rent. Heuristic, not a hard floor.
@@ -37,7 +38,13 @@ class API{
     constructor(wallet: AnchorWallet, connection: CliConnection, programId: PublicKey, programManagerId: PublicKey){
         this.programId = programId;
         this.programManagerId = programManagerId;
-        this.squads = Squads.endpoint(connection.cluster, wallet, {commitmentOrConfig: "confirmed", multisigProgramId: this.programId, programManagerProgramId: this.programManagerId});
+        // @sqds/sdk types this parameter as anchor's NodeWallet *class* (which
+        // requires a `payer` Keypair), but at runtime it only hands the wallet
+        // to AnchorProvider, which uses the Wallet *interface* members
+        // (publicKey/signTransaction/signAllTransactions). Ledger wallets
+        // implement the interface but have no `payer`, so we assert to the
+        // SDK's expected type. No runtime behavior change.
+        this.squads = Squads.endpoint(connection.cluster, wallet as SdkNodeWallet, {commitmentOrConfig: "confirmed", multisigProgramId: this.programId, programManagerProgramId: this.programManagerId});
         this.wallet = wallet;
         this.cluster = connection.cluster;
         this.connection = connection.connection;
@@ -70,7 +77,17 @@ class API{
         try {
             const sig = await this.connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
             if (confirm) {
-                await this.connection.confirmTransaction(sig, "confirmed");
+                // confirmTransaction resolves (does not throw) for a tx that landed
+                // on chain but failed execution — the failure surfaces in value.err.
+                // Because we skip preflight, that errored-but-confirmed case is the
+                // only signal we get, so treat any non-null err as a hard failure.
+                const { value } = await this.connection.confirmTransaction(
+                    { signature: sig, blockhash, lastValidBlockHeight },
+                    "confirmed",
+                );
+                if (value.err) {
+                    throw new Error(`Transaction ${sig} failed on chain: ${JSON.stringify(value.err)}`);
+                }
             }
             return sig;
         } catch (e) {
@@ -82,7 +99,9 @@ class API{
     };
 
     // Builder-driven multisig config changes (auth index 0): add/remove member, change threshold.
-    // Sends create+add+activate (+ optional topup) in one Solana tx, then casts the caller's approval.
+    // Sends create+add+activate (+ optional topup) plus the caller's approval in one atomic
+    // Solana tx, so the approval can never land on a different account at the deterministic
+    // tx PDA if the create/activate leg fails on-chain.
     private submitBuilderTx = async (
         msPDA: PublicKey,
         mutate: (b: SquadsTxBuilder) => Promise<SquadsTxBuilder>,
@@ -91,14 +110,14 @@ class API{
         const builder = await this.squads.getTransactionBuilder(msPDA, 0);
         const [txInstructions, txPDA] = await (await mutate(builder)).getInstructions();
         const activateIx = await this.squads.buildActivateTransaction(msPDA, txPDA);
+        const approveIx = await this.squads.buildApproveTransaction(msPDA, txPDA);
         const ixes: anchor.web3.TransactionInstruction[] = [];
         if (opts.includeTopUp) {
             const topup = await this.squads.checkGetTopUpInstruction(msPDA);
             if (topup) ixes.push(topup);
         }
-        ixes.push(...txInstructions, activateIx);
+        ixes.push(...txInstructions, activateIx, approveIx);
         await this.sendAndConfirm(ixes);
-        await this.squads.approveTransaction(txPDA);
         return this.squads.getTransaction(txPDA);
     };
 
@@ -112,7 +131,52 @@ class API{
         const activateIx = await this.squads.buildActivateTransaction(msPDA, txPDA);
         const approveIx = await this.squads.buildApproveTransaction(msPDA, txPDA);
         await this.sendAndConfirm([createTxIx, addIx, activateIx, approveIx]);
+        // The txPDA above is precomputed from transactionIndex+1 and is therefore
+        // deterministic/raceable: a competing member can occupy the same index, so
+        // a confirmed signature alone is not proof that WE staged the tx we showed
+        // the operator. Re-fetch the account and verify its contents before
+        // returning the address as a successfully created transaction.
+        await this.verifyStagedTx(msPDA, txPDA, innerIx, 1);
         return txPDA;
+    };
+
+    // Confirms the on-chain transaction at txPDA is the one we just staged:
+    // owned by this multisig, authored by us, on the expected authority index,
+    // and carrying exactly the instruction we attached. Throws on any mismatch
+    // so callers never report an aliased/attacker-controlled PDA as success.
+    private verifyStagedTx = async (
+        msPDA: PublicKey,
+        txPDA: PublicKey,
+        expectedIx: anchor.web3.TransactionInstruction,
+        authorityIndex: number,
+    ): Promise<void> => {
+        let tx: TransactionAccount;
+        try {
+            tx = await this.squads.getTransaction(txPDA);
+        } catch (_e) {
+            throw new Error("Transaction was not created on chain (account not found).");
+        }
+        if (!tx.ms.equals(msPDA)) throw new Error("Created transaction belongs to a different multisig.");
+        if (!tx.creator.equals(this.wallet.publicKey)) throw new Error("Created transaction was authored by another member.");
+        if (tx.authorityIndex !== authorityIndex) throw new Error(`Created transaction has unexpected authority index ${tx.authorityIndex}.`);
+
+        const [ixPDA] = getIxPDA(txPDA, new BN(1), this.programId);
+        let ix: InstructionAccount;
+        try {
+            ix = await this.squads.getInstruction(ixPDA);
+        } catch (_e) {
+            throw new Error("Expected instruction was not attached to the created transaction.");
+        }
+        if (!ix.programId.equals(expectedIx.programId)) throw new Error("Attached instruction targets an unexpected program.");
+        if (!Buffer.from(ix.data).equals(expectedIx.data)) throw new Error("Attached instruction data does not match.");
+        if (ix.keys.length !== expectedIx.keys.length) throw new Error("Attached instruction account list does not match.");
+        for (let i = 0; i < expectedIx.keys.length; i++) {
+            const got = ix.keys[i];
+            const want = expectedIx.keys[i];
+            if (!got.pubkey.equals(want.pubkey) || got.isSigner !== want.isSigner || got.isWritable !== want.isWritable) {
+                throw new Error("Attached instruction accounts do not match.");
+            }
+        }
     };
 
     getSquadExtended = async (ms: PublicKey) => {
@@ -135,26 +199,44 @@ class API{
         //   8 discriminator + 2 threshold + 2 authorityIndex + 4 transactionIndex
         //   + 4 msChangeIndex + 1 bump + 32 createKey + 1 allowExternalExecute
         //   + 4 vec-length prefix = 58
-        // We scan up to MS_SCAN_POSITIONS positions in parallel; multisigs that
-        // place this wallet beyond that won't be discovered (rare in practice).
+        // memcmp can only match a fixed offset, so we probe one member slot at a
+        // time. A previous fixed 10-slot cap silently hid any membership stored at
+        // slot >= 10. Instead, scan in batches and keep advancing until a full
+        // batch of consecutive slots yields no match. A multisig's `keys` Vec is
+        // dense from slot 0, so once we've covered the baseline and an entire batch
+        // comes back empty, we've passed the largest membership for this wallet.
+        // MIN_SCAN_POSITIONS is probed unconditionally so a wallet that only sits
+        // at a higher slot (e.g. 10) is never missed by an early empty batch.
+        // Server-side memcmp keeps each response small, which matters on mainnet;
+        // operators of unusually large multisigs also have the direct-address entry
+        // path in the menu as a guaranteed fallback.
         const KEYS_OFFSET = 58;
-        const MS_SCAN_POSITIONS = 10;
+        const SCAN_BATCH = 16;
+        const MIN_SCAN_POSITIONS = 64;
         const walletKey = this.wallet.publicKey.toBase58();
-        const queries = Array.from({ length: MS_SCAN_POSITIONS }, (_, i) =>
-            this.program.account.ms.all([
-                { memcmp: { offset: KEYS_OFFSET + i * 32, bytes: walletKey } },
-            ]),
-        );
-        const results = await Promise.all(queries);
         const seen = new Set<string>();
         const msPDAs: PublicKey[] = [];
-        for (const batch of results) {
-            for (const entry of batch) {
-                const key = entry.publicKey.toBase58();
-                if (seen.has(key)) continue;
-                seen.add(key);
-                msPDAs.push(entry.publicKey);
+        let position = 0;
+        let keepScanning = true;
+        while (keepScanning) {
+            const queries = Array.from({ length: SCAN_BATCH }, (_, i) =>
+                this.program.account.ms.all([
+                    { memcmp: { offset: KEYS_OFFSET + (position + i) * 32, bytes: walletKey } },
+                ]),
+            );
+            const results = await Promise.all(queries);
+            let batchHits = 0;
+            for (const batch of results) {
+                for (const entry of batch) {
+                    batchHits++;
+                    const key = entry.publicKey.toBase58();
+                    if (seen.has(key)) continue;
+                    seen.add(key);
+                    msPDAs.push(entry.publicKey);
+                }
             }
+            position += SCAN_BATCH;
+            keepScanning = position < MIN_SCAN_POSITIONS || batchHits > 0;
         }
         return Promise.all(msPDAs.map(k => this.getSquadExtended(k)));
     };

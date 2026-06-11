@@ -9,8 +9,8 @@ const questions = [
         type: 'number',
         message: 'Enter the authority index to use (default 1):',
         validate: function( value ) {
-            if (value < 1 ) {
-                return 'Authorities must be greater than 0, if you need to change the multisig settings, use the settings menu';
+            if (!Number.isInteger(value) || value < 1) {
+                return 'Authority index must be a whole number greater than 0, if you need to change the multisig settings, use the settings menu';
             }else{
                 return true;
             }
