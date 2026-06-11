@@ -877,8 +877,8 @@ class Menu{
             console.log("Transfering metadata update authority to the vault, this may take some time depending on the number of mints and your internet connection speed.");
             const status = new Spinner("Updating authority of the metadata accounts...");
             status.start();
-            const successUpdates = [];
-            const failedUpdates = [];
+            const successUpdates: PublicKey[] = [];
+            const failedUpdates: PublicKey[] = [];
             for (const mint of mintList) {
                 try {
                     const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
@@ -888,9 +888,9 @@ class Menu{
                     const signed = await this.api.wallet.signTransaction(updateTx);
                     const txid = await this.api.connection.sendRawTransaction(signed.serialize());
                     await this.api.connection.confirmTransaction(txid, "processed");
-                    successUpdates.push(mint.toBase58());
+                    successUpdates.push(mint);
                 }catch(e){
-                    failedUpdates.push(mint.toBase58());
+                    failedUpdates.push(mint);
                 }
             }
             status.stop();
@@ -899,7 +899,7 @@ class Menu{
             if (failedUpdates.length > 0) {
                 const {showFail} = await nftUpdateShowFailedMintsInq();
                 if(showFail){
-                    console.log(JSON.stringify(failedUpdates));
+                    console.log(JSON.stringify(failedUpdates.map((mint) => mint.toBase58())));
                 }
                 const {rerun} = await nftUpdateTryFailuresInq(failedUpdates.length);
                 if (rerun) {
@@ -908,11 +908,10 @@ class Menu{
                     const status = new Spinner(`Updating authority of the ${failedUpdates.length} remaining metadata accounts...`);
                     status.start();
                     for (const mint of failedUpdates) {
-                        const mAccount = new PublicKey(mint);
                         try {
                             const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
                             const updateTx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.api.wallet.publicKey});
-                            const updateIx = updateMetadataAuthorityIx(newAuthority, this.api.wallet.publicKey, mAccount);
+                            const updateIx = updateMetadataAuthorityIx(newAuthority, this.api.wallet.publicKey, getMetadataAccount(mint));
                             updateTx.add(updateIx);
                             const signed = await this.api.wallet.signTransaction(updateTx);
                             const txid = await this.api.connection.sendRawTransaction(signed.serialize());
