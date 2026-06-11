@@ -380,7 +380,13 @@ class Menu{
                 units: EXECUTE_IX_COMPUTE_UNIT_LIMIT,
             });
             try {
-                if (tx.instructionIndex > 3) {
+                // The sequential executeInstruction path is rejected on-chain for
+                // authority-index 0 (internal/governance) transactions — the program
+                // returns InvalidAuthorityIndex (6004) and the batch stalls as
+                // executeReady forever. Such batches (created by other Squads clients
+                // or SDK scripts) must use the atomic executeTransaction path, so only
+                // route to the split path when the authority index is 1 or greater.
+                if (tx.authorityIndex >= 1 && tx.instructionIndex > 3) {
                     for (let ixIndex = tx.executedIndex + 1; ixIndex <= tx.instructionIndex; ixIndex++) {
                         const [ixPDA] = getIxPDA(tx.publicKey, new anchor.BN(ixIndex), this.api.programId);
                         console.log("invoking instruction ", ixIndex);
