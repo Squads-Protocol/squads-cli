@@ -325,10 +325,15 @@ class Menu{
                 authority: authority.toBase58(),
                 approved: tx.approved.length,
                 rejected: tx.rejected.length,
-                instructions: tx.instructionIndex
+                instructions: tx.instructionIndex,
+                executed: tx.executedIndex,
+                remaining: tx.instructionIndex - tx.executedIndex,
             }
         ];
         console.table(txData);
+        if (tx.executedIndex > 0 && tx.executedIndex < tx.instructionIndex) {
+            console.log(chalk.yellow(`Partially executed: ${tx.executedIndex}/${tx.instructionIndex} instructions done — Execute will resume from instruction ${tx.executedIndex + 1}.`));
+        }
         if(tx.status.active){
             console.log(chalk.red("Be sure to review all transaction instructions before approving or executing!"));
         }
@@ -380,7 +385,14 @@ class Menu{
                 units: EXECUTE_IX_COMPUTE_UNIT_LIMIT,
             });
             try {
-                if (tx.instructionIndex > 3) {
+                // Drive the execute mode from transaction state, not just the raw
+                // instruction count. Once sequential execution has started
+                // (executedIndex > 0) the program rejects executeTransaction with
+                // PartialExecution (constraint: transaction.executed_index < 1), so
+                // a partially executed transaction of ANY size must continue via
+                // executeInstruction for the next PDA. The loop already resumes
+                // from executedIndex + 1.
+                if (tx.instructionIndex > 3 || tx.executedIndex > 0) {
                     for (let ixIndex = tx.executedIndex + 1; ixIndex <= tx.instructionIndex; ixIndex++) {
                         const [ixPDA] = getIxPDA(tx.publicKey, new anchor.BN(ixIndex), this.api.programId);
                         console.log("invoking instruction ", ixIndex);
