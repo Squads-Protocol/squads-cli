@@ -80,6 +80,32 @@ squads-cli --cluster https://api.mainnet-beta.solana.com --computeUnitPrice 5000
 - **Bulk NFT authority migration** — move metadata update authority for many mints into or out of a vault, with an optional `safeSign` co-signer. Progress logs are written to a temporary directory (not your working directory).
 - **Create ATA** — create an associated token account owned by a vault.
 
+### NFT authority migration & the mint list file
+
+The bulk NFT flows operate on a list of mints you supply as a `.json` file (the prompt asks for the file location). The format is a **plain JSON array of base58 mint address strings** — nothing more:
+
+```json
+[
+  "5j8...firstMintAddress",
+  "9Wg...secondMintAddress",
+  "Fz3...thirdMintAddress"
+]
+```
+
+Rules the loader enforces:
+
+- It must be a JSON **array** (not an object, not a CSV, not newline-delimited).
+- Each entry is a **non-empty string** that is a valid **base58 public key**. Any entry that isn't aborts the load and names the offending index.
+- Use the **mint addresses** themselves — not metadata PDAs and not keypairs. The CLI derives each mint's Metaplex metadata PDA for you.
+- Duplicate entries are de-duplicated automatically.
+
+There are two directions, and they behave differently:
+
+- **Into the vault (incoming)** — used when your *connected wallet* is the current update authority. The CLI first validates that every mint's metadata exists and that your wallet really is its current update authority, shows the exact metadata PDAs to be reassigned, then signs the updates directly with your wallet. Mints your wallet doesn't control are reported up front rather than failing mid-run.
+- **Out of the vault (outgoing)** — used when the *vault* is the current authority. Because the vault can only act through governance, this stages multisig transactions (batched across the mint list) that members then approve and execute. An optional **`safeSign`** mode adds the new authority as a required co-signer, and that co-signer is preserved on retries.
+
+Progress and results are written to a log file in a temporary directory (not your working directory), so a large run can be audited afterward.
+
 ### Executing transactions: what to expect
 
 The CLI executes a transaction in the most efficient way that still fits Solana's transaction size limit:
