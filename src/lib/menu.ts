@@ -154,11 +154,14 @@ class Menu{
             spinner.stop();
             const testList = await loadAuthorities(this.multisigs);
 
+            const oIndex = testList.length;
+            testList.push({ name: "Open multisig by address ->", value: oIndex, short: "Open by address" });
             const dIndex = testList.length;
             testList.push({ name: "<- Go back", value: dIndex, short: "Go back" });
 
             const {action} = await viewMultisigsMenu(testList, dIndex);
             if (action === dIndex) return () => this.top();
+            if (action === oIndex) return () => this.openMultisigByAddress();
             return () => this.multisig(this.multisigs[action]);
         } catch (error) {
             spinner.stop();
@@ -167,6 +170,49 @@ class Menu{
             await continueInq();
             return () => this.top();
         }
+    };
+
+    // Direct open-by-address path. Discovery (getSquads) can be spammed with
+    // permissionlessly created decoy multisigs that include this wallet, so
+    // operators need a way to reach a known multisig without relying on the
+    // discovered list.
+    private openMultisigByAddress = async (): Promise<NextAction> => {
+        const {address} = await inquirer.prompt({
+            type: "input",
+            name: "address",
+            message: "Enter the multisig account address (leave empty to go back):",
+        });
+        const trimmed = (address as string).trim();
+        if (trimmed.length < 1) return () => this.multisigList();
+
+        let msPDA: PublicKey;
+        try {
+            msPDA = new PublicKey(trimmed);
+        } catch (e) {
+            console.log(chalk.red("Invalid address - could not parse as a public key"));
+            await continueInq();
+            return () => this.multisigList();
+        }
+
+        const spinner = new Spinner("Loading multisig...");
+        spinner.start();
+        let msAccount: MultisigAccount;
+        try {
+            msAccount = await this.api.getSquadExtended(msPDA);
+        } catch (error) {
+            spinner.stop();
+            console.log(chalk.red(`No multisig account found at ${msPDA.toBase58()}`));
+            await continueInq();
+            return () => this.multisigList();
+        }
+        spinner.stop();
+
+        const isMember = msAccount.keys.some((k) => k.equals(this.wallet.publicKey));
+        if (!isMember) {
+            console.log(chalk.yellow("Warning: the connected wallet is NOT a member of this multisig."));
+            await continueInq();
+        }
+        return () => this.multisig(msAccount);
     };
 
     multisig = async (ms: MultisigAccount): Promise<NextAction> => {
