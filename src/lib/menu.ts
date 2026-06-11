@@ -488,14 +488,13 @@ class Menu{
                 units: EXECUTE_IX_COMPUTE_UNIT_LIMIT,
             });
             try {
-                // Drive the execute mode from transaction state, not just the raw
-                // instruction count. Once sequential execution has started
-                // (executedIndex > 0) the program rejects executeTransaction with
-                // PartialExecution (constraint: transaction.executed_index < 1), so
-                // a partially executed transaction of ANY size must continue via
-                // executeInstruction for the next PDA. The loop already resumes
-                // from executedIndex + 1.
-                if (tx.instructionIndex > 3 || tx.executedIndex > 0) {
+                // The sequential executeInstruction path is rejected on-chain for
+                // authority-index 0 (internal/governance) transactions — the program
+                // returns InvalidAuthorityIndex (6004) and the batch stalls as
+                // executeReady forever. Such batches (created by other Squads clients
+                // or SDK scripts) must use the atomic executeTransaction path, so only
+                // route to the split path when the authority index is 1 or greater.
+                if (tx.authorityIndex >= 1 && tx.instructionIndex > 3) {
                     for (let ixIndex = tx.executedIndex + 1; ixIndex <= tx.instructionIndex; ixIndex++) {
                         const [ixPDA] = getIxPDA(tx.publicKey, new anchor.BN(ixIndex), this.api.programId);
                         console.log("invoking instruction ", ixIndex);
