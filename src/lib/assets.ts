@@ -45,6 +45,7 @@ export const getAssets = async (connection: Connection, userKey: PublicKey): Pro
         symbol: 'SOL',
         decimals: 9,
         name: "Solana",
+        provenance: 'registry',
     }];
 
     // Include wrapped-SOL token accounts — the native SOL row only reflects
@@ -106,6 +107,7 @@ export const getAssets = async (connection: Connection, userKey: PublicKey): Pro
                         symbol: md.symbol,
                         decimals,
                         name: md.name,
+                        provenance: 'metadata',
                     });
                     return;
                 } catch {
@@ -120,6 +122,7 @@ export const getAssets = async (connection: Connection, userKey: PublicKey): Pro
                     amount, source, mint: listEntry.address,
                     symbol: listEntry.symbol, decimals,
                     name: listEntry.name,
+                    provenance: 'registry',
                 });
                 return;
             }
@@ -129,9 +132,18 @@ export const getAssets = async (connection: Connection, userKey: PublicKey): Pro
                 amount, source, mint: mintStr,
                 symbol: shortenTextEnd(mintStr, 4),
                 decimals, name: "UNKNOWN",
+                provenance: 'unknown',
             });
         });
     }
+
+    // Human-readable trust signal for the label source. Metadata labels are
+    // attacker-controllable, so they are explicitly flagged as unverified.
+    const provenanceLabel: Record<TokenAsset['provenance'], string> = {
+        metadata: 'on-chain metadata (unverified)',
+        registry: 'token registry',
+        unknown: 'unknown',
+    };
 
     const displayTokens = usableTokens.map(a => ({
         Amount: a.amount,
@@ -139,6 +151,7 @@ export const getAssets = async (connection: Connection, userKey: PublicKey): Pro
         Mint: a.mint,
         Symbol: a.symbol,
         Name: a.name,
+        Source: provenanceLabel[a.provenance],
     }));
     return { usableTokens, displayTokens };
 };
