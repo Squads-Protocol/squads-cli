@@ -416,6 +416,27 @@ class Menu{
         }
     };
 
+    // Builds, signs, sends, and confirms a single executeInstruction tx, throwing
+    // if the transaction failed on chain. confirmTransaction resolves (rather than
+    // throwing) when the failure arrives over the websocket subscription — the
+    // SignatureResult, including a non-null err, comes back on the resolve path —
+    // so the only reliable failure signal is inspecting result.value.err here.
+    private executeOneInstruction = async (
+        txPDA: PublicKey,
+        ixPDA: PublicKey,
+        computeBudgetIx: anchor.web3.TransactionInstruction,
+    ): Promise<void> => {
+        const ix = await this.api.executeInstructionBuilder(txPDA, ixPDA);
+        const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
+        const executeIxTx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.wallet.publicKey});
+        executeIxTx.add(computeBudgetIx, ix);
+        const signed = await this.wallet.signTransaction(executeIxTx);
+        const txid = await this.api.connection.sendRawTransaction(signed.serialize(), {skipPreflight: true});
+        console.log(`ix signature: ${txid}`);
+        const result = await this.api.connection.confirmTransaction({signature: txid, blockhash, lastValidBlockHeight}, "confirmed");
+        if (result.value.err) throw new Error(`Instruction failed on chain: ${JSON.stringify(result.value.err)}`);
+    };
+
     transaction = async (tx: TransactionAccount, ms: MultisigAccount, txs: TransactionAccount[]): Promise<NextAction> => {
         const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
@@ -499,34 +520,18 @@ class Menu{
                         const [ixPDA] = getIxPDA(tx.publicKey, new anchor.BN(ixIndex), this.api.programId);
                         console.log("invoking instruction ", ixIndex);
                         try {
-                            const ix = await this.api.executeInstructionBuilder(tx.publicKey, ixPDA);
-                            const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
-                            const executeIxTx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.wallet.publicKey});
-                            executeIxTx.add(additionalComputeBudgetInstruction, ix);
-                            const signed = await this.wallet.signTransaction(executeIxTx);
-                            const txid = await this.api.connection.sendRawTransaction(signed.serialize(), {skipPreflight: true});
-                            console.log(`ix ${ixIndex} signature: ${txid}`);
-                            await this.api.connection.confirmTransaction({signature: txid, blockhash, lastValidBlockHeight}, "confirmed");
-                            await this.api.squads.getTransaction(tx.publicKey);
+                            await this.executeOneInstruction(tx.publicKey, ixPDA, additionalComputeBudgetInstruction);
                         } catch (_e) {
-                            // The confirmation may have failed (e.g. timeout) even though the
-                            // instruction landed on-chain, so check fresh state before retrying.
-                            const refreshed = await this.api.squads.getTransaction(tx.publicKey);
-                            if (refreshed.executedIndex >= ixIndex) {
-                                console.log(`ix ${ixIndex} landed on-chain despite the confirmation error, continuing`);
-                            } else {
-                                console.log("Error executing instruction, trying it again");
-                                const ix = await this.api.executeInstructionBuilder(tx.publicKey, ixPDA);
-                                const {blockhash, lastValidBlockHeight} = await this.api.connection.getLatestBlockhash();
-                                const executeIxTx = new Transaction({lastValidBlockHeight, blockhash, feePayer: this.wallet.publicKey});
-                                executeIxTx.add(additionalComputeBudgetInstruction, ix);
-                                const signed = await this.wallet.signTransaction(executeIxTx);
-                                const txid = await this.api.connection.sendRawTransaction(signed.serialize(), {skipPreflight: true});
-                                console.log(`ix ${ixIndex} retry signature: ${txid}`);
-                                await this.api.connection.confirmTransaction({signature: txid, blockhash, lastValidBlockHeight}, "confirmed");
-                            }
+                            console.log("Error executing instruction, trying it again");
+                            await this.executeOneInstruction(tx.publicKey, ixPDA, additionalComputeBudgetInstruction);
                         }
-                        await this.api.squads.getTransaction(tx.publicKey);
+                        // Confirm on-chain progress before counting this instruction:
+                        // a confirmed-but-failed send leaves executedIndex behind, and
+                        // we must not advance the loop (or the counter) past it.
+                        const refreshed = await this.api.squads.getTransaction(tx.publicKey);
+                        if (refreshed.executedIndex !== ixIndex) {
+                            throw new Error(`Execution stalled at instruction ${ixIndex}: on-chain executedIndex is ${refreshed.executedIndex}.`);
+                        }
                         successfullyExecuted++;
                     }
                 } else {
@@ -536,12 +541,9 @@ class Menu{
                     executeTx.add(additionalComputeBudgetInstruction, ix);
                     const signed = await this.wallet.signTransaction(executeTx);
                     const txid = await this.api.connection.sendRawTransaction(signed.serialize());
-                    // Wait for "confirmed" (not "processed") before reporting success:
-                    // single-instruction control changes (membership/threshold/authority
-                    // transfers) take this fast path, and processed state can disappear
-                    // on fork churn, making a governance change look durably complete
-                    // when it is not.
-                    await this.api.connection.confirmTransaction(txid, "confirmed");
+                    const result = await this.api.connection.confirmTransaction({signature: txid, blockhash, lastValidBlockHeight}, "confirmed");
+                    if (result.value.err) throw new Error(`Execution failed on chain: ${JSON.stringify(result.value.err)}`);
+                    successfullyExecuted = tx.instructionIndex - tx.executedIndex;
                 }
                 status.stop();
                 // Re-read at "confirmed" so the success message and refreshed state
@@ -549,6 +551,11 @@ class Menu{
                 const updatedTx = await this.api.squads.getTransaction(tx.publicKey, "confirmed");
                 const newInd = txs.findIndex(t => t.publicKey.toBase58() === tx.publicKey.toBase58());
                 txs.splice(newInd, 1, updatedTx);
+                // Only claim full success once the on-chain transaction confirms every
+                // instruction ran; otherwise surface the partial prefix honestly.
+                if (updatedTx.executedIndex !== updatedTx.instructionIndex) {
+                    throw new Error(`Execution incomplete: ${updatedTx.executedIndex}/${updatedTx.instructionIndex} instructions executed on chain.`);
+                }
                 console.log("Transaction executed");
                 const updatedMs = await this.api.squads.getMultisig(ms.publicKey, "confirmed");
                 await continueInq();
