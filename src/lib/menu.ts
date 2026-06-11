@@ -296,8 +296,11 @@ class Menu{
                 const txBuffer = anchor.utils.bytes.bs58.decode(rawIx);
                 clear();
                 this.header();
-                const rawTxMessage = anchor.web3.Message.from(txBuffer);
-                const populatedTx = anchor.web3.Transaction.populate(rawTxMessage);
+                // The pasted blob is a serialized wire transaction, which is prefixed
+                // with a signature array. Transaction.from strips the signatures before
+                // parsing the message; Message.from would reinterpret signature bytes as
+                // message header/instruction data, yielding different instructions.
+                const populatedTx = anchor.web3.Transaction.from(txBuffer);
                 const ixes = populatedTx.instructions;
                 console.log("This will create a new multisig transaction for authority/signer " + chalk.blue(authorityPDA.toBase58()));
 
