@@ -5,3 +5,6 @@ bin/
 
 transfer.json
 yarn-error.log
+
+authority-out-*.txt
+authority-out-mints-*.json

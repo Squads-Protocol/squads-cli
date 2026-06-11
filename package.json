@@ -3,8 +3,14 @@
   "version": "2.3.19",
   "description": "",
   "main": "bin/index.js",
+  "files": [
+    "bin/",
+    "README.md",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "build": "tsc",
+    "prepack": "rm -rf bin && npm run build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint 'src/**/*.ts'",
     "test": "echo \"Error: no test specified\" && exit 1"
