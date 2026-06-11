@@ -24,6 +24,7 @@ import {
     createTransactionInq,
     addInstructionInq,
     addTransactionInq,
+    authorityIndexInq,
     promptProgramId,
     transactionPrompt,
     basicConfirm,
@@ -179,12 +180,13 @@ class Menu{
         console.log(" ");
         const {action} = await multisigMainMenu(ms);
         if (action === MULTISIG.VAULT) {
+            const {authorityIndex} = await authorityIndexInq();
             const status = new Spinner("Loading vault");
             status.start();
-            const vaultPDA = await this.api.getVault(ms.publicKey);
+            const vaultPDA = await this.api.getAuthority(ms.publicKey, authorityIndex);
             const vaultAssets = await this.api.getVaultAssets(vaultPDA);
             status.stop();
-            return () => this.vault(ms, vaultPDA, vaultAssets);
+            return () => this.vault(ms, vaultPDA, vaultAssets, authorityIndex);
         }
         else if (action === MULTISIG.SETTINGS) {
             return () => this.settings(ms);
@@ -468,9 +470,10 @@ class Menu{
         return () => this.transaction(tx, ms, txs);
     };
 
-    vault = async (ms: MultisigAccount, vaultPDA: PublicKey, vd: AssetBundle): Promise<NextAction> => {
+    vault = async (ms: MultisigAccount, vaultPDA: PublicKey, vd: AssetBundle, authorityIndex: number = 1): Promise<NextAction> => {
         this.header();
-        console.log("Vault Address: " + chalk.blue(vaultPDA.toBase58()));
+        const indexLabel = authorityIndex === 1 ? `${authorityIndex} (default)` : `${authorityIndex}`;
+        console.log(`Vault Address (authority index ${indexLabel}): ` + chalk.blue(vaultPDA.toBase58()));
         console.table(vd.displayTokens);
         await continueInq();
         return () => this.multisig(ms);
@@ -724,14 +727,20 @@ class Menu{
         return () => this.multisig(ms);
     };
 
-    nfts = async (ms: MultisigAccount): Promise<NextAction> => {
+    nfts = async (ms: MultisigAccount, authorityIndex?: number): Promise<NextAction> => {
         clear();
-        const vault = await this.api.getVault(ms.publicKey);
+        // Prompt for the authority index once on entry into the NFT flows, then
+        // thread the selected index/PDA through every sub-flow. When re-entered
+        // (e.g. returning from a sub-flow) the previously selected index is kept.
+        const index = authorityIndex ?? (await authorityIndexInq()).authorityIndex;
+        const vault = await this.api.getAuthority(ms.publicKey, index);
         this.header(vault);
+        const indexLabel = index === 1 ? `${index} (default)` : `${index}`;
+        console.log(`Using authority index ${indexLabel} - vault: ` + chalk.blue(vault.toBase58()));
         const {action} = await nftMainInq();
-        if (action === 0) return () => this.nftAuthorityChange(ms);
-        if (action === 1) return () => this.nftValidateMetaAuthorities(ms);
-        if (action === 2) return () => this.nftBatchTransfer(ms);
+        if (action === 0) return () => this.nftAuthorityChange(ms, vault, index);
+        if (action === 1) return () => this.nftValidateMetaAuthorities(ms, vault, index);
+        if (action === 2) return () => this.nftBatchTransfer(ms, vault, index);
         return () => this.multisig(ms);
     };
 
@@ -806,9 +815,8 @@ class Menu{
         }
     };
 
-    nftAuthorityChange = async (ms: MultisigAccount): Promise<NextAction> => {
+    nftAuthorityChange = async (ms: MultisigAccount, vault: PublicKey, authorityIndex: number): Promise<NextAction> => {
         clear();
-        const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         const {type, publicKey, mintList} = await nftUpdateAuthorityInq();
         let newAuthority = vault;
@@ -831,18 +839,17 @@ class Menu{
 
         if (error) {
             await continueInq();
-            return () => this.nfts(ms);
+            return () => this.nfts(ms, authorityIndex);
         }
-        if (type === 0) return () => this.nftAuthorityChangeIncoming(ms, allMints, newAuthority);
-        if (type === 1) return () => this.nftAuthorityChangeOutgoing(ms, allMints, newAuthority);
+        if (type === 0) return () => this.nftAuthorityChangeIncoming(ms, allMints, newAuthority, vault, authorityIndex);
+        if (type === 1) return () => this.nftAuthorityChangeOutgoing(ms, allMints, newAuthority, vault, authorityIndex);
         await continueInq();
-        return () => this.nfts(ms);
+        return () => this.nfts(ms, authorityIndex);
     };
 
     // this can simply be transferred to the vault directly with metaplex program
-    nftAuthorityChangeIncoming = async (ms: MultisigAccount, mintList: PublicKey[], newAuthority: PublicKey): Promise<NextAction> => {
+    nftAuthorityChangeIncoming = async (ms: MultisigAccount, mintList: PublicKey[], newAuthority: PublicKey, vault: PublicKey, authorityIndex: number): Promise<NextAction> => {
         clear();
-        const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         const {validate} = await nftValidateMetasInq();
         let error = false;
@@ -929,13 +936,12 @@ class Menu{
 
             await continueInq();
         }
-        return () => this.nfts(ms);
+        return () => this.nfts(ms, authorityIndex);
     };
 
     // to move the authority out, transaction will need to be created
-    nftAuthorityChangeOutgoing = async (ms: MultisigAccount, mintList: PublicKey[], newAuthority: PublicKey): Promise<NextAction> => {
+    nftAuthorityChangeOutgoing = async (ms: MultisigAccount, mintList: PublicKey[], newAuthority: PublicKey, vault: PublicKey, authorityIndex: number): Promise<NextAction> => {
         clear();
-        const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         let error = false;
         const {ownerValidate} = await nftValidateOwnerInq();
@@ -994,7 +1000,7 @@ class Menu{
             try {
                 transferOutWriteStream.write("Initiating bulk outgoing authority change transactions\n");
                 for(const batch of buckets){
-                    const metasAdded = await createAuthorityUpdateTx(this.api.squads, ms.publicKey, vault, newAuthority, batch, this.api.connection, transferOutWriteStream, safeSign);
+                    const metasAdded = await createAuthorityUpdateTx(this.api.squads, ms.publicKey, vault, newAuthority, batch, this.api.connection, transferOutWriteStream, safeSign, authorityIndex);
                     successfullyStagedMetas.push(...metasAdded.attached);
 
                     // if we haven't had an activation error, activate it
@@ -1026,12 +1032,11 @@ class Menu{
             console.log(`Output logs written to: ${logFilename}`);
             await continueInq();
         }
-        return () => this.nfts(ms);
+        return () => this.nfts(ms, authorityIndex);
     };
 
-    nftValidateMetaAuthorities = async (ms: MultisigAccount): Promise<NextAction> => {
+    nftValidateMetaAuthorities = async (ms: MultisigAccount, vault: PublicKey, authorityIndex: number): Promise<NextAction> => {
         clear();
-        const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         let error = false;
         console.log("This process will check that all the provided mints specified have the proper matching metadata account update authority, and also possess valid metadata accounts.");
@@ -1072,12 +1077,11 @@ class Menu{
                 await continueInq();
             }
         }
-        return () => this.nfts(ms);
+        return () => this.nfts(ms, authorityIndex);
     };
 
-    nftBatchTransfer = async (ms: MultisigAccount): Promise<NextAction> => {
+    nftBatchTransfer = async (ms: MultisigAccount, vault: PublicKey, authorityIndex: number): Promise<NextAction> => {
         clear();
-        const vault = await this.api.getVault(ms.publicKey);
         this.header(vault);
         const {mintList} = await nftMintListInq();
         if (mintList && mintList.length > 0) {
@@ -1128,7 +1132,7 @@ class Menu{
                 // setup log file
                 const fullResults = [];
                 for(const batch of buckets){
-                    const metasAdded = await createWithdrawNftTx(this.api.squads, ms.publicKey, vault, new PublicKey(destination), batch, this.api.connection);
+                    const metasAdded = await createWithdrawNftTx(this.api.squads, ms.publicKey, vault, new PublicKey(destination), batch, this.api.connection, authorityIndex);
                     successfullyStagedMetas.push(...metasAdded.attached);
 
                     // if we haven't had an activation error, activate it
@@ -1154,7 +1158,7 @@ class Menu{
         }
         // this goes back to main nft menu
         await continueInq();
-        return () => this.nfts(ms);
+        return () => this.nfts(ms, authorityIndex);
     };
 }
 

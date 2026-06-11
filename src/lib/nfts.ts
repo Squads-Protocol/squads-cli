@@ -20,14 +20,14 @@ import type { Mutable, TxMetaPayload } from "../types.js";
 
 type BatchTransactionCreationError = 'approval' | 'activation' | 'none';
 // can fit 250 ixes
-export const createAuthorityUpdateTx = async (squadsSdk: Squads, multisig: PublicKey, currentAuthority: PublicKey, newAuthority: PublicKey, mints: PublicKey[], connection: Connection, ws: fs.WriteStream, safeSign?: boolean) => {
+export const createAuthorityUpdateTx = async (squadsSdk: Squads, multisig: PublicKey, currentAuthority: PublicKey, newAuthority: PublicKey, mints: PublicKey[], connection: Connection, ws: fs.WriteStream, safeSign?: boolean, authorityIndex: number = 1) => {
     // create the transaction to update the authority
     // attach the update authority ix to the transaction (up to 250)
     const attached = [];
     const attachFails = [];
     let txError: BatchTransactionCreationError = 'none';
     const queue = mints;
-    let txState = await squadsSdk.createTransaction(multisig, 1);
+    let txState = await squadsSdk.createTransaction(multisig, authorityIndex);
     ws.write(`Created Transaction at PDA: ${txState.publicKey.toBase58()}\n`);
     await squadsSdk.getTransaction(txState.publicKey);
     const batchLength = mints.length;
@@ -328,14 +328,14 @@ export const checkIfMintsAreValidAndOwnedByVault = async (connection: Connection
     return {success,failures}
 }
 
-export const createWithdrawNftTx = async (squadsSdk: Squads, multisig: PublicKey, vault: PublicKey, destination: PublicKey, mints: PublicKey[], connection: Connection) => {
+export const createWithdrawNftTx = async (squadsSdk: Squads, multisig: PublicKey, vault: PublicKey, destination: PublicKey, mints: PublicKey[], connection: Connection, authorityIndex: number = 1) => {
     // create the transaction to update the authority
     // attach the update authority ix to the transaction (up to 250)
     const attached = [];
     const attachFails = [];
     let txError: BatchTransactionCreationError = 'none';
     const queue = mints;
-    let txState = await squadsSdk.createTransaction(multisig, 1);
+    let txState = await squadsSdk.createTransaction(multisig, authorityIndex);
     const batchLength = mints.length;
     let hasError = false;
     const failures = [];
