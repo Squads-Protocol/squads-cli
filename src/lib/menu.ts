@@ -622,6 +622,11 @@ class Menu{
         const {yes} = await basicConfirm(`Create, activate, and cast your approval on a transaction to add ${memberKey}?`, false);
         if (!yes) return () => this.addKey(ms);
         const newKey = new PublicKey(memberKey);
+        if (ms.keys.some((k) => k.equals(newKey))) {
+            console.log(chalk.red(`${newKey.toBase58()} is already a member of this multisig — this would be a no-op that can invalidate other active proposals.`));
+            await continueInq();
+            return () => this.settings(ms);
+        }
         const status = new Spinner("Creating New Member Transaction...");
         status.start();
         try {
@@ -673,19 +678,25 @@ class Menu{
             type: 'input',
             message: `Enter the new proposed threshold`,
             validate: (t) => {
-                if (parseInt(t, 10) > ms.keys.length) {
-                    return "Threshold cannot be greater than the number of members";
-                }
+                const n = Number(t);
+                if (!Number.isInteger(n) || n < 1) return "Threshold must be a whole number of at least 1";
+                if (n > ms.keys.length) return "Threshold cannot be greater than the number of members";
                 return true;
             },
         });
         if (threshold === "") return () => this.settings(ms);
+        const thresholdInt = Number(threshold);
+        if (thresholdInt === ms.threshold) {
+            console.log(chalk.red(`The threshold is already ${ms.threshold} — this would be a no-op that can invalidate other active proposals.`));
+            await continueInq();
+            return () => this.settings(ms);
+        }
         const {yes} = await basicConfirm(`Create, activate, and cast your approval on a transaction to change threshold to ${threshold}?`, false);
         if (!yes) return () => this.settings(ms);
         const status = new Spinner("Creating Change Threshold Transaction...");
         status.start();
         try {
-            await this.api.changeThresholdTransaction(ms.publicKey, threshold);
+            await this.api.changeThresholdTransaction(ms.publicKey, thresholdInt);
             status.stop();
             console.log("Transaction created and activated — your approval vote has been cast.");
             const newMs = await this.api.squads.getMultisig(ms.publicKey);
