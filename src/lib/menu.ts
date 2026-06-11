@@ -155,15 +155,14 @@ class Menu{
             this.multisigs = await this.api.getSquads(this.wallet.publicKey);
             spinner.stop();
             const testList = await loadAuthorities(this.multisigs);
-
-            const byAddressIndex = testList.length;
-            testList.push({ name: "Open a multisig by address", value: byAddressIndex, short: "By address" });
+            const oIndex = testList.length;
+            testList.push({ name: "Open multisig by address ->", value: oIndex, short: "Open by address" });
             const dIndex = testList.length;
             testList.push({ name: "<- Go back", value: dIndex, short: "Go back" });
 
             const {action} = await viewMultisigsMenu(testList, dIndex);
             if (action === dIndex) return () => this.top();
-            if (action === byAddressIndex) return () => this.openMultisigByAddress();
+            if (action === oIndex) return () => this.openMultisigByAddress();
             return () => this.multisig(this.multisigs[action]);
         } catch (error) {
             spinner.stop();
@@ -174,39 +173,47 @@ class Menu{
         }
     };
 
-    // Direct-address fallback for the discovery list. Membership discovery scans
-    // member slots and, while it now grows well past the old 10-slot cap, cannot
-    // prove completeness for arbitrarily large multisigs. This lets an operator
-    // open any multisig by its account address regardless of where their wallet
-    // sits in the members list.
-    openMultisigByAddress = async (): Promise<NextAction> => {
+    // Direct open-by-address path. Discovery (getSquads) can be spammed with
+    // permissionlessly created decoy multisigs that include this wallet, so
+    // operators need a way to reach a known multisig without relying on the
+    // discovered list.
+    private openMultisigByAddress = async (): Promise<NextAction> => {
         const {address} = await inquirer.prompt({
-            default: "",
-            name: 'address',
-            type: 'input',
-            message: 'Enter the multisig account address (base58):',
+            type: "input",
+            name: "address",
+            message: "Enter the multisig account address (leave empty to go back):",
         });
-        if (!address || address.trim().length < 1) return () => this.multisigList();
-        let msPubkey: PublicKey;
+        const trimmed = (address as string).trim();
+        if (trimmed.length < 1) return () => this.multisigList();
+
+        let msPDA: PublicKey;
         try {
-            msPubkey = new PublicKey(address.trim());
+            msPDA = new PublicKey(trimmed);
         } catch (e) {
-            console.log(chalk.red("Invalid public key."));
+            console.log(chalk.red("Invalid address - could not parse as a public key"));
             await continueInq();
             return () => this.multisigList();
         }
-        const status = new Spinner("Loading multisig...");
-        status.start();
+
+        const spinner = new Spinner("Loading multisig...");
+        spinner.start();
+        let msAccount: MultisigAccount;
         try {
-            const ms = await this.api.getSquadExtended(msPubkey);
-            status.stop();
-            return () => this.multisig(ms);
-        } catch (e) {
-            status.stop();
-            console.log(chalk.red("Could not load a multisig at that address. Check the address and cluster."));
+            msAccount = await this.api.getSquadExtended(msPDA);
+        } catch (error) {
+            spinner.stop();
+            console.log(chalk.red(`No multisig account found at ${msPDA.toBase58()}`));
             await continueInq();
             return () => this.multisigList();
         }
+        spinner.stop();
+
+        const isMember = msAccount.keys.some((k) => k.equals(this.wallet.publicKey));
+        if (!isMember) {
+            console.log(chalk.yellow("Warning: the connected wallet is NOT a member of this multisig."));
+            await continueInq();
+        }
+        return () => this.multisig(msAccount);
     };
 
     multisig = async (ms: MultisigAccount): Promise<NextAction> => {
