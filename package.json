@@ -1,6 +1,6 @@
 {
   "name": "@sqds/cli",
-  "version": "2.3.19",
+  "version": "3.0.0",
   "description": "CLI Tool for interacting with the Squads V3 Multisig Solana Program",
   "main": "bin/index.js",
   "files": [
