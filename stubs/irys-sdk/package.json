@@ -1,0 +1,7 @@
+{
+  "name": "@irys/sdk",
+  "version": "0.0.2",
+  "description": "Local stub replacing @irys/sdk via npm overrides. The real package pulls in aptos, near, and ethers dependency trees with unpatchable security advisories (elliptic, vulnerable ws). @metaplex-foundation/js only loads @irys/sdk lazily inside its storage upload methods, which this CLI never calls — it only reads and transfers NFTs.",
+  "main": "index.js",
+  "license": "AGPL-3.0-or-later"
+}

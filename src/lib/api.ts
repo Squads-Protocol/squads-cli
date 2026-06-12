@@ -1,7 +1,8 @@
 import type { Wallet as SdkNodeWallet } from "@coral-xyz/anchor";
 import Squads, { getTxPDA, getIxPDA, getAuthorityPDA } from "@sqds/sdk";
 import * as anchor from "@coral-xyz/anchor";
-import BN from "bn.js";
+import { BN } from "@coral-xyz/anchor";
+import bs58 from "bs58";
 import chalk from "chalk";
 import { getProgramData, upgradeSetAuthorityIx } from "./program.js";
 import { getAssets } from "./assets.js";
@@ -189,7 +190,74 @@ class API{
     };
 
     getVault = (msPDA: PublicKey): Promise<PublicKey> => this.getAuthority(msPDA, 1);
-    
+
+    // Whether the RPC provider supports getProgramAccountsV2. Detected on the
+    // first query and cached for the session.
+    private gpaV2Supported: boolean | undefined;
+
+    // Fetch all decoded `Ms` accounts matching a memcmp filter. RPC providers
+    // (e.g. Helius) now refuse plain getProgramAccounts on programs whose
+    // account set has grown too large and require cursor-paginated
+    // getProgramAccountsV2 — which web3.js 1.x doesn't expose, so the call
+    // goes through the connection's raw RPC channel. Providers that don't
+    // implement V2 (-32601 method not found) fall back to anchor's
+    // getProgramAccounts path.
+    private getMsAccountsByMemcmp = async (
+        offset: number,
+        bytes: string,
+    ): Promise<{ publicKey: PublicKey; account: anchor.IdlAccounts<anchor.Idl>[string] }[]> => {
+        const memberFilter = { memcmp: { offset, bytes } };
+        if (this.gpaV2Supported === false) {
+            return this.program.account.ms.all([memberFilter]);
+        }
+        // Anchor's .all() adds the account discriminator filter itself; the raw
+        // RPC call needs it added explicitly so only Ms accounts match.
+        const discriminatorFilter = {
+            memcmp: { offset: 0, bytes: bs58.encode(anchor.BorshAccountsCoder.accountDiscriminator("Ms")) },
+        };
+        const out: { publicKey: PublicKey; account: anchor.IdlAccounts<anchor.Idl>[string] }[] = [];
+        let paginationKey: string | null = null;
+        do {
+            // _rpcRequest is web3.js-internal but stable, and the only way to
+            // reach a method Connection has no wrapper for.
+            const res = await (this.connection as unknown as {
+                _rpcRequest(method: string, args: unknown[]): Promise<{
+                    error?: { code: number; message: string };
+                    result?: {
+                        accounts: { pubkey: string; account: { data: [string, string] } }[];
+                        paginationKey: string | null;
+                    };
+                }>;
+            })._rpcRequest("getProgramAccountsV2", [
+                this.programId.toBase58(),
+                {
+                    commitment: "confirmed",
+                    encoding: "base64",
+                    filters: [discriminatorFilter, memberFilter],
+                    limit: 1000,
+                    ...(paginationKey ? { paginationKey } : {}),
+                },
+            ]);
+            if (res.error) {
+                if (res.error.code === -32601) {
+                    // Method not found: provider has no V2 support.
+                    this.gpaV2Supported = false;
+                    return this.program.account.ms.all([memberFilter]);
+                }
+                throw new Error(`failed to get Ms accounts via getProgramAccountsV2: ${res.error.message}`);
+            }
+            this.gpaV2Supported = true;
+            for (const entry of res.result!.accounts) {
+                out.push({
+                    publicKey: new PublicKey(entry.pubkey),
+                    account: this.program.coder.accounts.decode("Ms", Buffer.from(entry.account.data[0], "base64")),
+                });
+            }
+            paginationKey = res.result!.paginationKey;
+        } while (paginationKey);
+        return out;
+    };
+
     getSquads = async (_pubkey: PublicKey) => {
         // Find all Ms accounts where the connected wallet appears in the `keys`
         // Vec. Rather than fetching every Ms account on the program (tens of
@@ -228,9 +296,7 @@ class API{
         let truncated = false;
         while (keepScanning) {
             const queries = Array.from({ length: SCAN_BATCH }, (_, i) =>
-                this.program.account.ms.all([
-                    { memcmp: { offset: KEYS_OFFSET + (position + i) * 32, bytes: walletKey } },
-                ]),
+                this.getMsAccountsByMemcmp(KEYS_OFFSET + (position + i) * 32, walletKey),
             );
             const results = await Promise.all(queries);
             let batchHits = 0;

@@ -4,7 +4,6 @@ import figlet from 'figlet';
 import inquirer from 'inquirer';
 import * as anchor from "@coral-xyz/anchor";
 import CLI from "clui";
-import "console.table";
 import * as fs from 'fs';
 import os from 'os';
 import path from 'path';

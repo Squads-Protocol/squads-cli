@@ -3,6 +3,7 @@ import fs from "fs";
 import { ComputeBudgetProgram, type Transaction } from "@solana/web3.js";
 import * as anchor from "@coral-xyz/anchor";
 import type { AnchorWallet } from "../types.js";
+import { expandTilde } from "./utils.js";
 
 const homedir = os.homedir();
 const defaultWalletPath = `${homedir}/.config/solana/id.json`;
@@ -17,8 +18,8 @@ class CliWallet {
         computeUnitPrice?: number,
     ) {
         this.walletPath = defaultWalletPath;
-        if (walletInitPath && walletInitPath.length > 0) {
-            this.walletPath = walletInitPath;
+        if (walletInitPath && walletInitPath.trim().length > 0) {
+            this.walletPath = expandTilde(walletInitPath);
         }
         const bareWallet = ledgerWallet ?? this.loadCliWallet();
         this.wallet = new WalletWithFees(bareWallet, computeUnitPrice);

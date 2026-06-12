@@ -11,7 +11,7 @@ import {
     UnparsedMaybeAccount,
 } from "@metaplex-foundation/js";
 import * as fs from "fs";
-import { getMultipleAccountsBatch } from "./utils.js";
+import { expandTilde, getMultipleAccountsBatch } from "./utils.js";
 import { METAPLEX_PROGRAM_ID, updateMetadataAuthorityIx } from "./metadataInstructions.js";
 import {TokenStandard} from '@metaplex-foundation/mpl-token-metadata';
 
@@ -226,7 +226,7 @@ export const checkAllMetasAuthority = async (connection: Connection, mints: Publ
 // loads the mint json and maps the mints to publickey. The file must contain
 // a JSON array of base58 mint addresses. Duplicates are silently de-duplicated.
 export const loadNFTMints = (path: string): PublicKey[] => {
-    const mintJSON = fs.readFileSync(path, "utf8");
+    const mintJSON = fs.readFileSync(expandTilde(path), "utf8");
     const parsed: unknown = JSON.parse(mintJSON);
     if (!Array.isArray(parsed)) {
         throw new Error("Mint list file must contain a JSON array of base58 mint addresses");

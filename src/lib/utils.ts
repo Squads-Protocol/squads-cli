@@ -1,4 +1,18 @@
 import { AccountInfo, Commitment, Connection, PublicKey } from "@solana/web3.js";
+import os from "os";
+import path from "path";
+
+// Expand a leading `~` to the home directory. Tilde expansion is shell
+// behavior, so paths typed into interactive prompts (wallet file, mint list)
+// reach fs.readFileSync unexpanded and fail without this. Also trims
+// surrounding whitespace, since prompt input is often pasted with a trailing
+// space or newline.
+export function expandTilde(inputPath: string): string {
+    const trimmed = inputPath.trim();
+    if (trimmed === "~") return os.homedir();
+    if (trimmed.startsWith("~/")) return path.join(os.homedir(), trimmed.slice(2));
+    return trimmed;
+}
 
 export function shortenTextEnd(text: string, chars: number) {
     const cleanedText = text.replaceAll("\x00", "")

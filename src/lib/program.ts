@@ -1,6 +1,6 @@
 import * as anchor from "@coral-xyz/anchor";
 import { AccountInfo, Connection, ParsedAccountData, PublicKey, RpcResponseAndContext } from "@solana/web3.js";
-import BN from "bn.js";
+import { BN } from "@coral-xyz/anchor";
 const BPFLOADER_ADDRESS = new anchor.web3.PublicKey("BPFLoaderUpgradeab1e11111111111111111111111");
 
 type ParsedAccountResponse = RpcResponseAndContext<AccountInfo<Buffer | ParsedAccountData> | null>;
