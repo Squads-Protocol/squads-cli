@@ -1,3 +1,6 @@
+> [!WARNING]
+> **This package is deprecated and no longer actively maintained.** It remains functional for operating existing Squads **v3** multisigs, but no new features will be added. For current Squads tooling, see [squads.so](https://squads.so).
+
 ```
    _____   ____    __  __    ___     ____    _____
   / ___/  / __ \  / / / /   /   |   / __ \  / ___/
