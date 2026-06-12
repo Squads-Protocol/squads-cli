@@ -2,9 +2,6 @@ import {
     createUpdateMetadataAccountV2Instruction,
     UpdateMetadataAccountV2InstructionArgs,
     PROGRAM_ID,
-
-    SetAndVerifyCollectionInstructionAccounts, SetAndVerifyCollectionStruct, setAndVerifyCollectionInstructionDiscriminator,
-    createSetAndVerifyCollectionInstruction
 } from '@metaplex-foundation/mpl-token-metadata';
 import {PublicKey} from "@solana/web3.js";
 

@@ -11,7 +11,7 @@ import {
     UnparsedMaybeAccount,
 } from "@metaplex-foundation/js";
 import * as fs from "fs";
-import { getMultipleAccountsBatch } from "./utils.js";
+import { expandTilde, getMultipleAccountsBatch } from "./utils.js";
 import { METAPLEX_PROGRAM_ID, updateMetadataAuthorityIx } from "./metadataInstructions.js";
 import {TokenStandard} from '@metaplex-foundation/mpl-token-metadata';
 
@@ -19,19 +19,38 @@ import Squads from "@sqds/sdk";
 import type { Mutable, TxMetaPayload } from "../types.js";
 
 type BatchTransactionCreationError = 'approval' | 'activation' | 'none';
+
+// Builds the metadata update-authority instruction, appending newAuthority as a
+// required signer when safe-sign mode is selected. Both the first-pass and the
+// retry attachment loops must build their instructions through this helper so a
+// mint that only attaches on retry keeps the exact authorization the operator
+// chose — otherwise retried mints would silently lose the safeSign co-sign.
+const buildAuthorityUpdateIx = (newAuthority: PublicKey, currentAuthority: PublicKey, mint: PublicKey, safeSign?: boolean) => {
+    const ix = updateMetadataAuthorityIx(newAuthority, currentAuthority, getMetadataAccount(mint));
+    if (safeSign) {
+        ix.keys.push({
+            pubkey: newAuthority,
+            isSigner: true,
+            isWritable: false
+        });
+    }
+    return ix;
+};
+
 // can fit 250 ixes
-export const createAuthorityUpdateTx = async (squadsSdk: Squads, multisig: PublicKey, currentAuthority: PublicKey, newAuthority: PublicKey, mints: PublicKey[], connection: Connection, ws: fs.WriteStream, safeSign?: boolean) => {
+export const createAuthorityUpdateTx = async (squadsSdk: Squads, multisig: PublicKey, currentAuthority: PublicKey, newAuthority: PublicKey, mints: PublicKey[], connection: Connection, ws: fs.WriteStream, safeSign?: boolean, authorityIndex: number = 1) => {
     // create the transaction to update the authority
     // attach the update authority ix to the transaction (up to 250)
     const attached = [];
     const attachFails = [];
     let txError: BatchTransactionCreationError = 'none';
     const queue = mints;
-    let txState = await squadsSdk.createTransaction(multisig, 1);
+    let txState = await squadsSdk.createTransaction(multisig, authorityIndex);
     ws.write(`Created Transaction at PDA: ${txState.publicKey.toBase58()}\n`);
     await squadsSdk.getTransaction(txState.publicKey);
     const batchLength = mints.length;
     ws.write(`Attaching ${batchLength} instructions for each metadata account\n`);
+    ws.write(`Safe-sign mode: ${safeSign ? "enforced (new authority required as signer)" : "off"}\n`);
     let hasError = false;
     const failures = [];
     while (queue.length > 0) {
@@ -39,18 +58,11 @@ export const createAuthorityUpdateTx = async (squadsSdk: Squads, multisig: Publi
         if (!mint) {
             break;
         }
-        const ix = updateMetadataAuthorityIx(newAuthority, currentAuthority, getMetadataAccount(mint));
-        if (safeSign) {
-            ix.keys.push({
-                pubkey: newAuthority,
-                isSigner: true,
-                isWritable: false
-            })
-        }
+        const ix = buildAuthorityUpdateIx(newAuthority, currentAuthority, mint, safeSign);
         try {
             const addedIx = await squadsSdk.addInstruction(txState.publicKey, ix);
             if (addedIx) {
-                ws.write(`${mint.toBase58()}\n`);
+                ws.write(`${mint.toBase58()} (safeSign: ${safeSign ? "enforced" : "off"})\n`);
                 attached.push(mint);
             }
             // flash tx state
@@ -70,11 +82,11 @@ export const createAuthorityUpdateTx = async (squadsSdk: Squads, multisig: Publi
             if (!mint) {
                 break;
             }
-            const ix = updateMetadataAuthorityIx(newAuthority, currentAuthority, getMetadataAccount(mint));
+            const ix = buildAuthorityUpdateIx(newAuthority, currentAuthority, mint, safeSign);
             try {
                 const addedIx = await squadsSdk.addInstruction(txState.publicKey, ix);
                 if (addedIx) {
-                    ws.write(`${mint.toBase58()}\n`);
+                    ws.write(`${mint.toBase58()} (safeSign: ${safeSign ? "enforced" : "off"})\n`);
                     attached.push(mint);
                 }
             }catch (e) {
@@ -214,7 +226,7 @@ export const checkAllMetasAuthority = async (connection: Connection, mints: Publ
 // loads the mint json and maps the mints to publickey. The file must contain
 // a JSON array of base58 mint addresses. Duplicates are silently de-duplicated.
 export const loadNFTMints = (path: string): PublicKey[] => {
-    const mintJSON = fs.readFileSync(path, "utf8");
+    const mintJSON = fs.readFileSync(expandTilde(path), "utf8");
     const parsed: unknown = JSON.parse(mintJSON);
     if (!Array.isArray(parsed)) {
         throw new Error("Mint list file must contain a JSON array of base58 mint addresses");
@@ -328,14 +340,14 @@ export const checkIfMintsAreValidAndOwnedByVault = async (connection: Connection
     return {success,failures}
 }
 
-export const createWithdrawNftTx = async (squadsSdk: Squads, multisig: PublicKey, vault: PublicKey, destination: PublicKey, mints: PublicKey[], connection: Connection) => {
+export const createWithdrawNftTx = async (squadsSdk: Squads, multisig: PublicKey, vault: PublicKey, destination: PublicKey, mints: PublicKey[], connection: Connection, authorityIndex: number = 1) => {
     // create the transaction to update the authority
     // attach the update authority ix to the transaction (up to 250)
     const attached = [];
     const attachFails = [];
     let txError: BatchTransactionCreationError = 'none';
     const queue = mints;
-    let txState = await squadsSdk.createTransaction(multisig, 1);
+    let txState = await squadsSdk.createTransaction(multisig, authorityIndex);
     const batchLength = mints.length;
     let hasError = false;
     const failures = [];
